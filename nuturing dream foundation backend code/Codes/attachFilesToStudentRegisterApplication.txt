@@ -1,0 +1,164 @@
+const {logger} = require("firebase-functions");
+const {onRequest} = require("firebase-functions/v2/https");
+const {Storage} = require("@google-cloud/storage");
+const {initializeApp} = require("firebase-admin/app");
+const {Firestore} = require("@google-cloud/firestore");
+const busboy = require("busboy");
+
+const db = new Firestore();
+initializeApp();
+
+const storage = new Storage();
+const bucket = storage.bucket("nurturingdreamsfoundatio-451b5");
+
+/**
+ * Retrieves a list of files in a folder for the given username.
+ *
+ * @param {string} username - The username for which to retrieve files.
+ * @return {Array} - A list of file names in the specified folder.
+ */
+async function getFileNamesInFolder(username) {
+  const [files] = await bucket.getFiles({prefix: `${username}/`});
+  return files.map((file) => file.name.split("/").pop());
+}
+
+/**
+ * Retrieves user information.
+ *
+ * @param {string} username - The username of the user.
+ * @return {Object} - User information object containing attachments.
+ */
+async function getUserInfo(username) {
+  const userRef = db.collection("registrationApplications").doc(username);
+  const userSnapshot = await userRef.get();
+
+  if (!userSnapshot.exists) {
+    // If user document does not exist, return empty attachments array
+    return {attachments: []};
+  }
+
+  const userData = userSnapshot.data();
+  const {attachments} = userData;
+  return {attachments};
+}
+
+/**
+ * Removes attachments from userInfo that do not match filesInFolder.
+ *
+ * @param {Object} userInfo - User information object containing attachments.
+ * @param {Array} filesInFolder - Array of file names in the specified folder.
+ * @return {Object} - Modified user information object with updated attachments.
+ */
+function removeInvalidAttachments(userInfo, filesInFolder) {
+  const {attachments} = userInfo;
+  const validAttachments = attachments.filter((attachment) => {
+    return filesInFolder.includes(attachment);
+  });
+  userInfo.attachments = validAttachments;
+  return userInfo;
+}
+
+/**
+ * Updates user document in Firestore with modified user information.
+ *
+ * @param {string} username - The username of the user.
+ * @param {Object} userInfo - Modified user information object.
+ */
+async function updateUserDocument(username, userInfo) {
+  const userRef = db.collection("registrationApplications").doc(username);
+  await userRef.set(userInfo, {merge: true});
+}
+
+// Cloud Function to handle file uploads
+exports.attachFilesToStudentRegisterApplication = onRequest({
+  region: "asia-south1", cors: true,
+}, async (req, res) => {
+  try {
+    if (req.headers["content-type"].startsWith("multipart/form-data")) {
+      let username = null;
+      let fileSelected = false;
+      const uploadedFileNames = []; // To store the uploaded filename
+      const bb = busboy({headers: req.headers});
+
+      bb.on("file", (name, file, info) => {
+        const {filename} = info;
+        logger.info(`File [${name}]: filename: %j`, filename);
+
+        if (!username || !file) {
+          return res.status(400).
+              json({error: "Username and file are required."});
+        }
+
+        fileSelected = true;
+        uploadedFileNames.push(filename);
+
+        const filePath = `${username}/${filename}`;
+        const fileUpload = bucket.file(filePath);
+        const stream = fileUpload.createWriteStream({
+          metadata: {
+            contentType: file.mimetype,
+          },
+        });
+
+        file.on("data", (data) => {
+          logger.info(`File [${name}] got ${data.length} bytes`);
+          stream.write(data);
+        }).on("close", () => {
+          logger.info(`File [${name}] done`);
+          stream.end();
+        });
+
+        stream.on("error", (err) => {
+          logger.error("Error uploading file:", err);
+          res.status(500).json({error: "Internal Server Error"});
+        });
+      });
+
+      bb.on("field", (name, value, info) => {
+        logger.info(`Field [${name}]: value: %j`, value);
+        if (name === "username") {
+          logger.info("username found");
+          username = value;
+        }
+      });
+
+      bb.on("close", async () => {
+        logger.info("Done parsing form!");
+        if (!fileSelected) {
+          res.status(400).json({error: "No file selected."});
+        } else {
+          try {
+            // Retrieve file names in username folder
+            const filesInFolder = await getFileNamesInFolder(username);
+
+            // Retrieve user information
+            let userInfo = await getUserInfo(username);
+
+            // Remove invalid attachments
+            userInfo = removeInvalidAttachments(userInfo, filesInFolder);
+
+            // Update user document
+            await updateUserDocument(username, userInfo);
+
+            // Send response
+            res.json({message: "File uploaded successfully.",
+              filename: uploadedFileNames});
+            res.end();
+          } catch (error) {
+            logger.error("Error generating download URL:", error);
+            res.status(500).json({error: "Internal Server Error"});
+          }
+        }
+      });
+
+      bb.end(req.rawBody);
+      req.pipe(bb);
+    } else {
+      logger.info(req.headers["content-type"]);
+      res.status(400).json({message: "Invalid Content-type"});
+    }
+  } catch (error) {
+    logger.error("Error uploading file:", error);
+    res.status(500).json({error: "Internal Server Error"});
+  }
+});

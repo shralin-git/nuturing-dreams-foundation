@@ -1,0 +1,137 @@
+const {logger} = require("firebase-functions");
+const {onRequest} = require("firebase-functions/v2/https");
+const {initializeApp} = require("firebase-admin/app");
+const {getFirestore} = require("firebase-admin/firestore");
+const admin = require("firebase-admin");
+
+initializeApp();
+
+const db = admin.firestore();
+const firestore = admin.firestore();
+/**
+ * Verifies an authentication token.
+ *
+ * @param {string} idToken - The ID token to verify.
+ * @return {Promise<object>} - Decoded token information.
+ * @throws {Error} - If verification fails.
+ */
+async function verifyToken(idToken) {
+  const decodedToken = await admin.auth().verifyIdToken(idToken);
+  return decodedToken;
+}
+
+/**
+ * Checks if a user is an admin.
+ *
+ * @param {string} email - The email address of the user.
+ * @return {Promise<boolean>}
+ * @throws {Error} - If an error occurs during the process.
+ */
+async function isAdminUser(email) {
+  const firestore = getFirestore();
+  const adminDoc = await firestore.collection("admin").doc(email).get();
+  const financialInstitutionDoc = await firestore.
+      collection("financial Institution").doc(email).get();
+  return adminDoc.exists ||financialInstitutionDoc.exists;
+}
+
+
+// API endpoint to retrieve user information
+exports.adminDashboardQueue = onRequest({
+  region: "asia-south1", cors: true,
+}, async (req, res) => {
+  try {
+    // Extract the ID token from the request headers
+    const idToken = req.headers.authorization;
+    if (!idToken) {
+      return res.status(400).send("ID token is missing");
+    }
+
+    // Verify the ID token
+    const decodedToken = await verifyToken(idToken);
+    if (!decodedToken) {
+      return res.status(401).send("Invalid ID token");
+    }
+
+    // Extract user information from the token
+    const adminEmail = decodedToken.email;
+    const isAdmin = await isAdminUser(adminEmail);
+    if (!isAdmin) {
+      return res.status(403).send("You are not authorized" +
+        " to view user information");
+    }
+    // Get total number of applications applied
+    const totalApplicationsSnapshot =
+      await firestore.collection("registrationApplications").get();
+    const totalApplications = totalApplicationsSnapshot.size;
+
+    // Get total number of approved statuse
+    const approvedSnapshot = await firestore.
+        collection("registrationApplications").
+        where("status", "==", "approve").get();
+    const totalApprovedStatuses = approvedSnapshot.size;
+
+    // Get total number of hold statuses
+    const holdSnapshot = await firestore.
+        collection("registrationApplications").
+        where("status", "==", "hold").get();
+    const totalHoldStatuses = holdSnapshot.size;
+
+    // Get total number of new statuses
+    const newSnapshot = await firestore.collection("registrationApplications").
+        where("status", "==", "new").get();
+    const totalNewStatuses = newSnapshot.size;
+
+    // Get total number of reject statuses
+    const rejectSnapshot = await firestore.
+        collection("registrationApplications")
+        .where("status", "==", "reject").get();
+    const totalRejectStatuses = rejectSnapshot.size;
+
+    // Get total counts for scholarship statuses
+    let totalScholarshipIds = 0;
+    let approveScholarshipStatus = 0;
+    let holdScholarshipStatus = 0;
+    let rejectScholarshipStatus = 0;
+    let newScholarshipStatus = 0;
+
+    const scholarshipIdsSnapshot =
+    await db.collectionGroup("scholarshipIds").get();
+    totalScholarshipIds = scholarshipIdsSnapshot.size;
+
+    const subCollectionQuerySnapshot = await db.
+        collection("scholarshipApplications").listDocuments();
+    for (const docRef of subCollectionQuerySnapshot) {
+      const holdSnapshot = await docRef.
+          collection("scholarshipIds").where("status", "==", "hold").get();
+      holdScholarshipStatus += holdSnapshot.size;
+
+      const approvedSnapshot = await docRef.collection("scholarshipIds")
+          .where("status", "==", "approve").get();
+      approveScholarshipStatus += approvedSnapshot.size;
+
+      const newSnapshot = await docRef.collection("scholarshipIds")
+          .where("status", "==", "new").get();
+      newScholarshipStatus += newSnapshot.size;
+
+      const rejectSnapshot = await docRef.collection("scholarshipIds")
+          .where("status", "==", "reject").get();
+      rejectScholarshipStatus += rejectSnapshot.size;
+    }
+    res.status(200).json({
+      "Total Applications": totalApplications,
+      "Total Approved Status": totalApprovedStatuses,
+      "Total Hold Status": totalHoldStatuses,
+      "Total New Status": totalNewStatuses,
+      "Total Rejected Status": totalRejectStatuses,
+      "Total Scholarship Applications": totalScholarshipIds,
+      "Approved Scholarship Status": approveScholarshipStatus,
+      "Hold Scholarship Status": holdScholarshipStatus,
+      "Rejected Scholarship Status": rejectScholarshipStatus,
+      "New Scholarship Status": newScholarshipStatus,
+    });
+  } catch (error) {
+    logger.error(error);
+    res.status(500).json({message: "Internal Server Error"});
+  }
+});

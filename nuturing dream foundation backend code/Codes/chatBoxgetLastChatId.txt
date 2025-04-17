@@ -1,0 +1,76 @@
+const {logger} = require("firebase-functions");
+const {onRequest} = require("firebase-functions/v2/https");
+// const {onDocumentCreated} = require("firebase-functions/v2/firestore");
+
+const admin = require("firebase-admin");
+const {getFirestore} = require("firebase-admin/firestore");
+const {initializeApp} = require("firebase-admin/app");
+initializeApp();
+
+// Initialize Firestore
+const db = getFirestore();
+
+/**
+ * Verifies an authentication token.
+ *
+ * @param {string} idToken - The ID token to verify.
+ * @return {Promise<object>} - Decoded token information.
+ * @throws {Error} - If verification fails.
+ */
+async function verifyToken(idToken) {
+  const decodedToken = await admin.auth().verifyIdToken(idToken);
+  return decodedToken;
+}
+
+exports.chatBoxgetLastChatId = onRequest({
+  region: "asia-south1", cors: true,
+}, async (req, res) => {
+  try {
+    // Extract the ID token from the request headers
+    const idToken = req.headers.authorization;
+    if (!idToken) {
+      return res.status(400).send("ID token is missing");
+    }
+
+    // Verify the ID token
+    const decodedToken = await verifyToken(idToken);
+    if (!decodedToken) {
+      return res.status(401).send("Invalid ID token");
+    }
+
+    // Extract user information from the token
+    const username = decodedToken.email;
+
+    // Construct conversation ID for the user
+    const conversationId = `${username}`;
+
+    // Get the conversation document reference
+    const conversationRef =
+    db.collection("StudentMentorChat").doc(conversationId);
+
+    // Get the conversation document
+    const conversationDoc = await conversationRef.get();
+
+    if (!conversationDoc.exists) {
+      return res.status(404).send("No chat found for the user");
+    }
+
+    // Get the messages array from the conversation document
+    const messages = conversationDoc.data().messages;
+
+    // If there are no messages, return an empty array
+    if (!messages || messages.length === 0) {
+      return res.status(200).json({lastChatId: null, lastMessage: null});
+    }
+
+    // Find the last message in the messages array
+    const lastMessage = messages[messages.length - 1];
+
+    // Return the last chat ID and the last message
+    res.status(200).json({lastMessage: lastMessage});
+  } catch (error) {
+    logger.error("Error:", error);
+    res.status(500).send("Internal Server Error");
+  }
+});
+

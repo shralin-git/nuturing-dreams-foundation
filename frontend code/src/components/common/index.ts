@@ -1,0 +1,13 @@
+export { default as Dashboard } from "../pages/ProtectedPages/Dashboard";
+export { default as Navbar } from "./Navbar";
+export { default as Sidebar } from "./Sidebar";
+export { default as Home } from "../pages/ProtectedPages/Home";
+export { default as Forum } from "../pages/ProtectedPages/forum/Forum";
+export { default as ForumMessages } from "../pages/ProtectedPages/forum/ForumMessages";
+export { default as Queue } from "../pages/ProtectedPages/queue/Queue";
+export { default as Scholarship } from "../pages/ProtectedPages/Scholarship";
+export { default as ScholarshipStudent } from "../pages/ProtectedPages/ScholarshipStudent";
+export { default as Chats } from "../pages/ProtectedPages/chats/Chats";
+export { default as Setting } from "../pages/ProtectedPages/Setting";
+export { default as Users } from "../pages/ProtectedPages/Users";
+export { default as ErrorBoundary } from "../pages/error/ErrorBoundary";

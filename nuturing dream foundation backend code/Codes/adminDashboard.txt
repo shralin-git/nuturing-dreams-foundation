@@ -1,0 +1,93 @@
+const {logger} = require("firebase-functions");
+const {onRequest} = require("firebase-functions/v2/https");
+// const express = require("express");
+const admin = require("firebase-admin");
+const {initializeApp} = require("firebase-admin/app");
+// const cors = require("cors");
+initializeApp();
+
+
+// Initialize Firestore
+const db = admin.firestore();
+
+// Middleware function to verify JWT token
+const verifyTokenMiddleware = async (req, res) => {
+  const idToken = req.headers.authorization;
+  if (!idToken) {
+    return res.status(211).json({message: "Authentication failed:"+
+    " No token provided. Please log in again."});
+  }
+  try {
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    if (!decodedToken) {
+      return res.status(212).json({message: "Authentication failed:"+
+      " Invalid token. Please log in again."});
+    }
+    req.decodedToken = decodedToken;
+    // Log the decoded email to the console
+    console.log("Decoded email:", decodedToken.email);
+
+    const processedBy = decodedToken.email;
+    const userSnapshot = await db.collection("admin").doc(processedBy).get();
+    if (!userSnapshot.exists) {
+      return res.status(213).json({message: "Authorization failed:"+
+      "Only admins are authorized to perform this action."});
+    }
+    return true;
+  } catch (error) {
+    if (error.code === "auth/id-token-expired" ||
+     error.code === "auth/id-token-revoked") {
+      return res.status(211).json({message: "Authentication failed:"+
+      " Token expired. Please log in again."});
+    } else if (error.code === "auth/argument-error") {
+      return res.status(212).json({message: "Authentication failed:"+
+      " Invalid token format. Please log in again."});
+    } else if (error.code === "auth/id-token-invalid") {
+      return res.status(213).json({message: "Authentication failed:"+
+      "Invalid token. Please log in again."});
+    } else {
+      logger.error("Error verifying ID token:", error);
+      return res.status(500).json({message: "Internal server error"});
+    }
+  }
+};
+
+exports.adminDashboard = onRequest({
+  region: "asia-south1", cors: true,
+}, async (req, res) => {
+  try {
+    const isVerified = await verifyTokenMiddleware(req, res);
+    if (!isVerified) return;
+
+    // Query registrationApplications collection
+    const snapshot = await db.collection("registrationApplications").get();
+
+    // Initialize an array to store user data
+    const userData = [];
+
+    // Iterate through each document in the collection
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+
+      // Extract relevant fields (adjust field names as needed)
+      const {email, firstName, lastName, status} = data;
+
+      // Construct an object with required fields
+      const user = {
+        email,
+        firstName,
+        lastName,
+        status,
+      };
+
+      // Push the user object into userData array
+      userData.push(user);
+    });
+
+    // Send the user data array as a response
+    res.status(200).json(userData);
+  } catch (error) {
+    logger.error("Error retrieving user data:", error);
+    res.status(500).json({error: "Internal server error"});
+  }
+});

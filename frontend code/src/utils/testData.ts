@@ -1,0 +1,687 @@
+export const forumData = {
+  data: [
+    {
+      topicId: 1,
+      title:
+        "Forum Title 1 lorem Forum Title 1 lorem Forum Title 1 lorem Forum Title 1 lorem Forum Title 1 lorem Forum Title 1 lorem ",
+      createdBy: "Sample Name 1",
+      createdDate: 1710657501,
+      thumbnailUrl:
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTXj_Q9R9dMyCVSeG0WJkq7tOZcs95g0moy2w&usqp=CAU",
+    },
+    {
+      topicId: 2,
+      title: "Forum Title 2",
+      createdBy: "Sample Name 2",
+      createdDate: 1710657502,
+      thumbnailUrl:
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTXj_Q9R9dMyCVSeG0WJkq7tOZcs95g0moy2w&usqp=CAU",
+    },
+    {
+      topicId: 3,
+      title: "Forum Title 3",
+      createdBy: "Sample Name 3",
+      createdDate: 1710657503,
+      thumbnailUrl:
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTXj_Q9R9dMyCVSeG0WJkq7tOZcs95g0moy2w&usqp=CAU",
+    },
+    {
+      topicId: 4,
+      title: "Forum Title 4",
+      createdBy: "Sample Name 4",
+      createdDate: 1710357504,
+      thumbnailUrl:
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTXj_Q9R9dMyCVSeG0WJkq7tOZcs95g0moy2w&usqp=CAU",
+    },
+    {
+      topicId: 5,
+      title: "Forum Title 5",
+      createdBy: "Sample Name 5",
+      createdDate: 1610657505,
+      thumbnailUrl:
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTXj_Q9R9dMyCVSeG0WJkq7tOZcs95g0moy2w&usqp=CAU",
+    },
+    {
+      title:
+        "Forum Title 1 lorem Forum Title 1 lorem Forum Title 1 lorem Forum Title 1 lorem Forum Title 1 lorem Forum Title 1 lorem ",
+      createdBy: "Sample Name 1",
+      createdDate: 1710657501,
+      thumbnailUrl:
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTXj_Q9R9dMyCVSeG0WJkq7tOZcs95g0moy2w&usqp=CAU",
+    },
+    {
+      title: "Forum Title 2",
+      createdBy: "Sample Name 2",
+      createdDate: 1710657502,
+      thumbnailUrl:
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTXj_Q9R9dMyCVSeG0WJkq7tOZcs95g0moy2w&usqp=CAU",
+    },
+    {
+      title: "Forum Title 3",
+      createdBy: "Sample Name 3",
+      createdDate: 1710657503,
+      thumbnailUrl:
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTXj_Q9R9dMyCVSeG0WJkq7tOZcs95g0moy2w&usqp=CAU",
+    },
+    {
+      title: "Forum Title 4",
+      createdBy: "Sample Name 4",
+      createdDate: 1710357504,
+      thumbnailUrl:
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTXj_Q9R9dMyCVSeG0WJkq7tOZcs95g0moy2w&usqp=CAU",
+    },
+    {
+      title: "Forum Title 5",
+      createdBy: "Sample Name 5",
+      createdDate: 1610657505,
+      thumbnailUrl:
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTXj_Q9R9dMyCVSeG0WJkq7tOZcs95g0moy2w&usqp=CAU",
+    },
+    {
+      title:
+        "Forum Title 1 lorem Forum Title 1 lorem Forum Title 1 lorem Forum Title 1 lorem Forum Title 1 lorem Forum Title 1 lorem ",
+      createdBy: "Sample Name 1",
+      createdDate: 1710657501,
+      thumbnailUrl:
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTXj_Q9R9dMyCVSeG0WJkq7tOZcs95g0moy2w&usqp=CAU",
+    },
+    {
+      title: "Forum Title 2",
+      createdBy: "Sample Name 2",
+      createdDate: 1710657502,
+      thumbnailUrl:
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTXj_Q9R9dMyCVSeG0WJkq7tOZcs95g0moy2w&usqp=CAU",
+    },
+    {
+      title: "Forum Title 3",
+      createdBy: "Sample Name 3",
+      createdDate: 1710657503,
+      thumbnailUrl:
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTXj_Q9R9dMyCVSeG0WJkq7tOZcs95g0moy2w&usqp=CAU",
+    },
+    {
+      title: "Forum Title 4",
+      createdBy: "Sample Name 4",
+      createdDate: 1710357504,
+      thumbnailUrl:
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTXj_Q9R9dMyCVSeG0WJkq7tOZcs95g0moy2w&usqp=CAU",
+    },
+    {
+      title: "Forum Title 5",
+      createdBy: "Sample Name 5",
+      createdDate: 1610657505,
+      thumbnailUrl:
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTXj_Q9R9dMyCVSeG0WJkq7tOZcs95g0moy2w&usqp=CAU",
+    },
+    {
+      title:
+        "Forum Title 1 lorem Forum Title 1 lorem Forum Title 1 lorem Forum Title 1 lorem Forum Title 1 lorem Forum Title 1 lorem ",
+      createdBy: "Sample Name 1",
+      createdDate: 1710657501,
+      thumbnailUrl:
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTXj_Q9R9dMyCVSeG0WJkq7tOZcs95g0moy2w&usqp=CAU",
+    },
+    {
+      title: "Forum Title 2",
+      createdBy: "Sample Name 2",
+      createdDate: 1710657502,
+      thumbnailUrl:
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTXj_Q9R9dMyCVSeG0WJkq7tOZcs95g0moy2w&usqp=CAU",
+    },
+    {
+      title: "Forum Title 3",
+      createdBy: "Sample Name 3",
+      createdDate: 1710657503,
+      thumbnailUrl:
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTXj_Q9R9dMyCVSeG0WJkq7tOZcs95g0moy2w&usqp=CAU",
+    },
+    {
+      title: "Forum Title 4",
+      createdBy: "Sample Name 4",
+      createdDate: 1710357504,
+      thumbnailUrl:
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTXj_Q9R9dMyCVSeG0WJkq7tOZcs95g0moy2w&usqp=CAU",
+    },
+    {
+      title: "Forum Title 5",
+      createdBy: "Sample Name 5",
+      createdDate: 1610657505,
+      thumbnailUrl:
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTXj_Q9R9dMyCVSeG0WJkq7tOZcs95g0moy2w&usqp=CAU",
+    },
+  ],
+  meta: {
+    count: 100,
+  },
+  topicMessages: [
+    {
+      id: 1,
+      senderId: "user1",
+      senderName: "Alice",
+      text: "Hey there!",
+      createdAt: "2024-04-07T08:30:00",
+      notifSent: 1,
+    },
+    {
+      id: 2,
+      senderId: "user2",
+      senderName: "Bob",
+      text: "Hi Alice!",
+      createdAt: "2024-04-07T08:35:00",
+      notifSent: 1,
+    },
+    {
+      id: 3,
+      senderId: "user3",
+      senderName: "Charlie",
+      text: "Hello everyone!",
+      createdAt: "2024-04-07T08:40:00",
+      notifSent: 1,
+    },
+    {
+      id: 4,
+      senderId: "user4",
+      senderName: "David",
+      text: "Morning folks!",
+      createdAt: "2024-04-07T08:45:00",
+      notifSent: 1,
+    },
+    {
+      id: 5,
+      senderId: "user5",
+      senderName: "Eva",
+      text: "Good day!",
+      createdAt: "2024-04-07T08:50:00",
+      notifSent: 1,
+    },
+    {
+      id: 6,
+      senderId: "user1",
+      senderName: "Alice",
+      text: "How's everyone doing today?",
+      createdAt: "2024-04-07T08:55:00",
+      notifSent: 1,
+    },
+    {
+      id: 7,
+      senderId: "user2",
+      senderName: "Bob",
+      text: "I'm doing well, thanks for asking!",
+      createdAt: "2024-04-07T09:00:00",
+      notifSent: 1,
+    },
+    {
+      id: 8,
+      senderId: "user3",
+      senderName: "Charlie",
+      text: "Pretty good here too.",
+      createdAt: "2024-04-07T09:05:00",
+      notifSent: 1,
+    },
+    {
+      id: 9,
+      senderId: "user4",
+      senderName: "David",
+      text: "Likewise!",
+      createdAt: "2024-04-07T09:10:00",
+      notifSent: 1,
+    },
+    {
+      id: 10,
+      senderId: "user5",
+      senderName: "Eva",
+      text: "I'm great!",
+      createdAt: "2024-04-07T09:15:00",
+      notifSent: 1,
+    },
+    {
+      id: 11,
+      senderId: "user1",
+      senderName: "Alice",
+      text: "What's the plan for today?",
+      createdAt: "2024-04-07T09:20:00",
+      notifSent: 1,
+    },
+    {
+      id: 12,
+      senderId: "user2",
+      senderName: "Bob",
+      text: "Let's discuss it in the meeting later.",
+      createdAt: "2024-04-07T09:25:00",
+      notifSent: 1,
+    },
+    {
+      id: 13,
+      senderId: "user3",
+      senderName: "Charlie",
+      text: "Agreed.",
+      createdAt: "2024-04-07T09:30:00",
+      notifSent: 1,
+    },
+    {
+      id: 14,
+      senderId: "user4",
+      senderName: "David",
+      text: "Sounds good to me.",
+      createdAt: "2024-04-07T09:35:00",
+      notifSent: 1,
+    },
+    {
+      id: 15,
+      senderId: "user5",
+      senderName: "Eva",
+      text: "See you all there!",
+      createdAt: "2024-04-07T09:40:00",
+      notifSent: 1,
+    },
+    {
+      id: 16,
+      senderId: "user1",
+      senderName: "Alice",
+      text: "Sure, looking forward to it!",
+      createdAt: "2024-04-07T09:45:00",
+      notifSent: 1,
+    },
+    {
+      id: 17,
+      senderId: "user2",
+      senderName: "Bob",
+      text: "Me too.",
+      createdAt: "2024-04-07T09:50:00",
+      notifSent: 1,
+    },
+    {
+      id: 18,
+      senderId: "user3",
+      senderName: "Charlie",
+      text: "Count me in.",
+      createdAt: "2024-04-07T09:55:00",
+      notifSent: 1,
+    },
+    {
+      id: 19,
+      senderId: "user4",
+      senderName: "David",
+      text: "Great!",
+      createdAt: "2024-04-07T10:00:00",
+      notifSent: 1,
+    },
+    {
+      id: 20,
+      senderId: "user5",
+      senderName: "Eva",
+      text: "Absolutely.",
+      createdAt: "2024-04-07T10:05:00",
+      notifSent: 1,
+    },
+  ],
+};
+
+// getAvaliableNorifications()  -15sec ,  message - 2 new mesages revieced , 4 messages
+// limit offset
+
+export const chatsData = {
+  chats: [
+    {
+      name: "John Smith",
+      info: "BMSCE student",
+      emailId: "john.smith@example.com",
+    },
+    {
+      name: "Alice",
+      info: "BMSCE student",
+      emailId: "alice.johnson@example.com",
+    },
+    {
+      name: "Bob Anderson",
+      info: "BMSCE student",
+      emailId: "bob.anderson@example.com",
+    },
+    {
+      name: "Emily Williams",
+      info: "BMSCE student",
+      emailId: "emily.williams@example.com",
+    },
+    {
+      name: "David Brown",
+      info: "BMSCE student",
+      emailId: "david.brown@example.com",
+    },
+    {
+      name: "Emma Davis",
+      info: "BMSCE student",
+      emailId: "emma.davis@example.com",
+    },
+    {
+      name: "Oliver Miller",
+      info: "BMSCE student",
+      emailId: "oliver.miller@example.com",
+    },
+    {
+      name: "Sophia Wilson",
+      info: "BMSCE student",
+      emailId: "sophia.wilson@example.com",
+    },
+    {
+      name: "James Martinez",
+      info: "BMSCE student",
+      emailId: "james.martinez@example.com",
+    },
+    {
+      name: "Isabella Taylor",
+      info: "BMSCE student",
+      emailId: "isabella.taylor@example.com",
+    },
+    {
+      name: "William Garcia",
+      info: "BMSCE student",
+      emailId: "william.garcia@example.com",
+    },
+    {
+      name: "Charlotte Rodriguez",
+      info: "BMSCE student",
+      emailId: "charlotte.rodriguez@example.com",
+    },
+    {
+      name: "Alexander Martinez",
+      info: "BMSCE student",
+      emailId: "alexander.martinez@example.com",
+    },
+    {
+      name: "Amelia Lee",
+      info: "BMSCE student",
+      emailId: "amelia.lee@example.com",
+    },
+    {
+      name: "Benjamin Hernandez",
+      info: "BMSCE student",
+      emailId: "benjamin.hernandez@example.com",
+    },
+    {
+      name: "Mia Gonzalez",
+      info: "BMSCE student",
+      emailId: "mia.gonzalez@example.com",
+    },
+    {
+      name: "Henry Perez",
+      info: "BMSCE student",
+      emailId: "henry.perez@example.com",
+    },
+    {
+      name: "Ella Sanchez",
+      info: "BMSCE student",
+      emailId: "ella.sanchez@example.com",
+    },
+    {
+      name: "Michael Ramirez",
+      info: "BMSCE student",
+      emailId: "michael.ramirez@example.com",
+    },
+    {
+      name: "Liam Flores",
+      info: "BMSCE student",
+      emailId: "liam.flores@example.com",
+    },
+    {
+      name: "Victoria Scott",
+      info: "BMSCE student",
+      emailId: "victoria.scott@example.com",
+    },
+    {
+      name: "Ava Nguyen",
+      info: "BMSCE student",
+      emailId: "ava.nguyen@example.com",
+    },
+    {
+      name: "Noah Kim",
+      info: "BMSCE student",
+      emailId: "noah.kim@example.com",
+    },
+    {
+      name: "Sophie Lewis",
+      info: "BMSCE student",
+      emailId: "sophie.lewis@example.com",
+    },
+    {
+      name: "Daniel Patel",
+      info: "BMSCE student",
+      emailId: "daniel.patel@example.com",
+    },
+    {
+      name: "Grace Collins",
+      info: "BMSCE student",
+      emailId: "grace.collins@example.com",
+    },
+    {
+      name: "Logan Lee",
+      info: "BMSCE student",
+      emailId: "logan.lee@example.com",
+    },
+    {
+      name: "Olivia Cook",
+      info: "BMSCE student",
+      emailId: "olivia.cook@example.com",
+    },
+    {
+      name: "Ethan Reed",
+      info: "BMSCE student",
+      emailId: "ethan.reed@example.com",
+    },
+  ],
+  messages: [
+    {
+      id: 1,
+      senderId: "user1",
+      senderName: "Alice",
+      text: "Hey there!",
+      createdAt: "2024-04-07T08:30:00",
+      notifSent: 1,
+    },
+    {
+      id: 2,
+      senderId: "user2",
+      senderName: "Bob",
+      text: "Hi Alice!",
+      createdAt: "2024-04-07T08:31:00",
+      notifSent: 1,
+    },
+    {
+      id: 3,
+      senderId: "user1",
+      senderName: "Alice",
+      text: "How are you?",
+      createdAt: "2024-04-07T08:32:00",
+      notifSent: 0,
+    },
+    {
+      id: 4,
+      senderId: "user2",
+      senderName: "Bob",
+      text: "I am doing well, thanks!",
+      createdAt: "2024-04-07T08:33:00",
+      notifSent: 0,
+    },
+    {
+      id: 5,
+      senderId: "user2",
+      senderName: "Bob",
+      text: "What about you?",
+      createdAt: "2024-04-07T08:34:00",
+    },
+    {
+      id: 6,
+      senderId: "user1",
+      senderName: "Alice",
+      text: "I am good too.",
+      createdAt: "2024-04-07T08:35:00",
+    },
+    {
+      id: 4,
+      senderId: "user2",
+      senderName: "Bob",
+      text: "I am doing well, thanks!",
+      createdAt: "2024-04-07T08:33:00",
+    },
+    {
+      id: 5,
+      senderId: "user2",
+      senderName: "Bob",
+      text: "What about you?",
+      createdAt: "2024-04-07T08:34:00",
+    },
+    {
+      id: 6,
+      senderId: "user1",
+      senderName: "Alice",
+      text: "I am good too.",
+      createdAt: "2024-04-07T08:35:00",
+    },
+    {
+      id: 4,
+      senderId: "user2",
+      senderName: "Bob",
+      text: "I am doing well, thanks!",
+      createdAt: "2024-04-07T08:33:00",
+    },
+    {
+      id: 5,
+      senderId: "user2",
+      senderName: "Bob",
+      text: "What about you?",
+      createdAt: "2024-04-07T08:34:00",
+    },
+    {
+      id: 6,
+      senderId: "user1",
+      senderName: "Alice",
+      text: "I am good too.",
+      createdAt: "2024-04-07T08:35:00",
+    },
+    {
+      id: 4,
+      senderId: "user2",
+      senderName: "Bob",
+      text: "I am doing well, thanks!",
+      createdAt: "2024-04-07T08:33:00",
+    },
+    {
+      id: 5,
+      senderId: "user2",
+      senderName: "Bob",
+      text: "What about you?",
+      createdAt: "2024-04-07T08:34:00",
+    },
+    {
+      id: 6,
+      senderId: "user1",
+      senderName: "Alice",
+      text: "I am good too.",
+      createdAt: "2024-04-07T08:35:00",
+    },
+    {
+      id: 4,
+      senderId: "user2",
+      senderName: "Bob",
+      text: "I am doing well, thanks!",
+      createdAt: "2024-04-07T08:33:00",
+    },
+    {
+      id: 5,
+      senderId: "user2",
+      senderName: "Bob",
+      text: "What about you?",
+      createdAt: "2024-04-07T08:34:00",
+    },
+    {
+      id: 6,
+      senderId: "user1",
+      senderName: "Alice",
+      text: "I am good too.",
+      createdAt: "2024-04-07T08:35:00",
+    },
+    {
+      id: 4,
+      senderId: "user2",
+      senderName: "Bob",
+      text: "I am doing well, thanks!",
+      createdAt: "2024-04-07T08:33:00",
+    },
+    {
+      id: 5,
+      senderId: "user2",
+      senderName: "Bob",
+      text: "What about you?",
+      createdAt: "2024-04-07T08:34:00",
+    },
+    {
+      id: 6,
+      senderId: "user1",
+      senderName: "Alice",
+      text: "I am good too.",
+      createdAt: "2024-04-07T08:35:00",
+    },
+    {
+      id: 4,
+      senderId: "user2",
+      senderName: "Bob",
+      text: "I am doing well, thanks!",
+      createdAt: "2024-04-07T08:33:00",
+    },
+    {
+      id: 5,
+      senderId: "user2",
+      senderName: "Bob",
+      text: "What about you?",
+      createdAt: "2024-04-07T08:34:00",
+    },
+    {
+      id: 6,
+      senderId: "user1",
+      senderName: "Alice",
+      text: "I am good too. am good too. am good too. am good too. am good too. am good too. am good too. am good too.",
+      createdAt: "2024-04-07T08:35:00",
+    },
+    {
+      id: 4,
+      senderId: "user2",
+      senderName: "Bob",
+      text: "I am doing well, thanks!",
+      createdAt: "2024-04-07T08:33:00",
+    },
+    {
+      id: 5,
+      senderId: "user2",
+      senderName: "Bob",
+      text: "What about you?",
+      createdAt: "2024-04-07T08:34:00",
+    },
+    {
+      id: 6,
+      senderId: "user1",
+      senderName: "Alice",
+      text: "I am good too.",
+      createdAt: "2024-04-07T08:35:00",
+    },
+    {
+      id: 4,
+      senderId: "user2",
+      senderName: "Bob",
+      text: "I am doing well, thanks!",
+      createdAt: "2024-04-07T08:33:00",
+    },
+    {
+      id: 5,
+      senderId: "user2",
+      senderName: "Bob",
+      text: "What about you?",
+      createdAt: "2024-04-08T08:34:00",
+    },
+    {
+      id: 6,
+      senderId: "user1",
+      senderName: "Alice",
+      text: "I am good too.",
+      createdAt: "2024-04-08T08:35:00",
+    },
+  ],
+};

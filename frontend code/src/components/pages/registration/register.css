@@ -1,0 +1,13 @@
+.ant-form-item {
+  width: 100% !important;
+}
+
+.ant-upload-list {
+  max-height: 150px;
+  overflow-y: auto;
+  padding-right: 10px;
+}
+
+.fixed-height {
+  height: calc(100vh - 64px);
+}

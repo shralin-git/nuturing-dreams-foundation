@@ -1,0 +1,108 @@
+const {logger} = require("firebase-functions");
+const {onRequest} = require("firebase-functions/v2/https");
+const {Storage} = require("@google-cloud/storage");
+const {initializeApp} = require("firebase-admin/app");
+// const {Firestore} = require("@google-cloud/firestore");
+const busboy = require("busboy");
+
+// const db = new Firestore();
+initializeApp();
+
+const storage = new Storage();
+const bucket = storage.bucket("nurturingdreamsfoundatio-451b5-emt4r");
+
+// Cloud Function to handle file uploads
+exports.attachFilesToProuduct = onRequest({
+  region: "asia-south1",
+  cors: true,
+}, async (req, res) => {
+  try {
+    if (req.headers["content-type"].startsWith("multipart/form-data")) {
+      let product = null;
+      let fileSelected = false;
+      const uploadedFileNames = []; // To store the uploaded filename
+      const bb = busboy({headers: req.headers});
+
+      // Function to delete existing folder and its contents
+      const deleteExistingFolder = async (folderPath) => {
+        const [files] = await bucket.getFiles({prefix: folderPath});
+        const deletePromises = files.map((file) => file.delete());
+        await Promise.all(deletePromises);
+        await bucket.deleteFiles({prefix: folderPath});
+      };
+
+      bb.on("file", (name, file, info) => {
+        const {filename} = info;
+        logger.info(`File [${name}]: filename: %j`, filename);
+
+        if (!product || !file) {
+          return res.status(400).
+              json({error: "product and file are required."});
+        }
+
+        fileSelected = true;
+        uploadedFileNames.push(filename);
+
+        const filePath = `${product}/${filename}`;
+        const fileUpload = bucket.file(filePath);
+        const stream = fileUpload.createWriteStream({
+          metadata: {
+            contentType: file.mimetype,
+          },
+        });
+
+        file.on("data", (data) => {
+          logger.info(`File [${name}] got ${data.length} bytes`);
+          stream.write(data);
+        }).on("close", () => {
+          logger.info(`File [${name}] done`);
+          stream.end();
+        });
+
+        stream.on("error", (err) => {
+          logger.error("Error uploading file:", err);
+          res.status(500).json({error: "Internal Server Error"});
+        });
+      });
+
+      bb.on("field", (name, value, info) => {
+        logger.info(`Field [${name}]: value: %j`, value);
+        if (name === "product") {
+          logger.info("product found");
+          product = value;
+        }
+      });
+
+      bb.on("close", async () => {
+        logger.info("Done parsing form!");
+        if (!fileSelected) {
+          res.status(400).json({error: "No file selected."});
+        } else {
+          try {
+            // Delete existing folder and its contents
+            await deleteExistingFolder(product);
+
+            // Send response
+            res.json({
+              message: "File uploaded successfully.",
+              filename: uploadedFileNames,
+            });
+            res.end();
+          } catch (error) {
+            logger.error("Error uploading file:", error);
+            res.status(500).json({error: "Internal Server Error"});
+          }
+        }
+      });
+
+      bb.end(req.rawBody);
+      req.pipe(bb);
+    } else {
+      logger.info(req.headers["content-type"]);
+      res.status(400).json({message: "Invalid Content-type"});
+    }
+  } catch (error) {
+    logger.error("Error uploading file:", error);
+    res.status(500).json({error: "Internal Server Error"});
+  }
+});
