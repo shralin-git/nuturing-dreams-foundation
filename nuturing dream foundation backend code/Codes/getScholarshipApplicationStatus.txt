@@ -1,0 +1,117 @@
+const {logger} = require("firebase-functions");
+const {onRequest} = require("firebase-functions/v2/https");
+const {initializeApp} = require("firebase-admin/app");
+const {getFirestore} = require("firebase-admin/firestore");
+const admin = require("firebase-admin");
+
+initializeApp();
+
+const db = admin.firestore();
+
+// const firestore = admin.firestore();
+/**
+ * Verifies an authentication token.
+ *
+ * @param {string} idToken - The ID token to verify.
+ * @return {Promise<object>} - Decoded token information.
+ * @throws {Error} - If verification fails.
+ */
+async function verifyToken(idToken) {
+  const decodedToken = await admin.auth().verifyIdToken(idToken);
+  return decodedToken;
+}
+
+/**
+ * Checks if a user is an admin or donor.
+ *
+ * @param {string} email - The email address of the user.
+ * @return {Promise<boolean>}
+ * @throws {Error} - If an error occurs during the process.
+ */
+async function isAuthorizedUser(email) {
+  const firestore = getFirestore();
+  const adminDoc = await firestore.
+      collection("admin").doc(email).get();
+  const donorDoc = await firestore.
+      collection("donor").doc(email).get();
+  const financialInstitutionDoc = await firestore.
+      collection("financial Institution").doc(email).get();
+  const InstitutionDoc = await firestore.
+      collection("institution").doc(email).get();
+  return adminDoc.exists || donorDoc.exists ||
+  financialInstitutionDoc.exists || InstitutionDoc.exists;
+}
+
+exports.getScholarshipApplicationStatus = onRequest({
+  region: "asia-south1",
+  cors: true,
+}, async (req, res) => {
+  try {
+    const status = req.query.status;
+    const idToken = req.headers.authorization;
+    if (!idToken) {
+      return res.status(400).send("ID token is missing");
+    }
+
+    let decodedToken;
+    try {
+      decodedToken = await verifyToken(idToken);
+    } catch (error) {
+      if (error.code === "auth/id-token-expired") {
+        return res.status(401).send("ID token has expired");
+      }
+      return res.status(401).send("Invalid ID token");
+    }
+
+    if (!decodedToken) {
+      return res.status(401).send("Invalid ID token");
+    }
+
+    const userEmail = decodedToken.email;
+    const isAuthorized = await isAuthorizedUser(userEmail);
+    if (!isAuthorized) {
+      return res.status(403).send("You are not authorized" +
+      " to view user information");
+    }
+
+    const userDetails = [];
+
+    if (status === "all") {
+      const subCollectionQuerySnapshot = await db
+          .collection("scholarshipApplications")
+          .listDocuments();
+
+      for (const docRef of subCollectionQuerySnapshot) {
+        const scholarshipIdsSnapshot = await docRef
+            .collection("scholarshipIds")
+            .get();
+
+        scholarshipIdsSnapshot.forEach((doc) => {
+          const data = doc.data();
+          if (data.status !== "new") {
+            userDetails.push({id: doc.id, data});
+          }
+        });
+      }
+    } else {
+      const subCollectionQuerySnapshot = await db
+          .collection("scholarshipApplications")
+          .listDocuments();
+
+      for (const docRef of subCollectionQuerySnapshot) {
+        const scholarshipIdsSnapshot = await docRef
+            .collection("scholarshipIds")
+            .where("status", "==", status)
+            .get();
+
+        scholarshipIdsSnapshot.forEach((doc) => {
+          userDetails.push({id: doc.id, data: doc.data()});
+        });
+      }
+    }
+    res.status(200).json({userDetails});
+  } catch (error) {
+    logger.error(error);
+    res.status(500).json({message: "Internal Server Error"});
+  }
+});

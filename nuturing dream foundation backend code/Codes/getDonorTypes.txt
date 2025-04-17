@@ -1,0 +1,28 @@
+const {logger} = require("firebase-functions");
+const {onRequest} = require("firebase-functions/v2/https");
+const {initializeApp} = require("firebase-admin/app");
+const admin = require("firebase-admin");
+
+initializeApp();
+
+const firestore = admin.firestore();
+
+// API endpoint to retrieve donor information
+exports.getDonorTypes = onRequest({
+  region: "asia-south1",
+  cors: true,
+}, async (req, res) => {
+  try {
+    // Retrieve all donor types from the "DonorType" collection
+    const donorTypes = [];
+    const donorTypeSnapshot = await firestore.collection("Donortype").get();
+    donorTypeSnapshot.forEach((doc) => {
+      donorTypes.push({id: doc.id});
+    });
+
+    res.status(200).json({donorTypes});
+  } catch (error) {
+    logger.error(error);
+    res.status(500).json({message: "Internal Server Error"});
+  }
+});

@@ -1,0 +1,82 @@
+const {logger} = require("firebase-functions");
+const {onRequest} = require("firebase-functions/v2/https");
+
+const admin = require("firebase-admin");
+const {getFirestore} = require("firebase-admin/firestore");
+const {initializeApp} = require("firebase-admin/app");
+initializeApp();
+
+// Initialize Firestore
+const db = getFirestore();
+
+/**
+ * Verifies an authentication token.
+ *
+ * @param {string} idToken - The ID token to verify.
+ * @return {Promise<object>} - Decoded token information.
+ * @throws {Error} - If verification fails.
+ */
+async function verifyToken(idToken) {
+  const decodedToken = await admin.auth().verifyIdToken(idToken);
+  return decodedToken;
+}
+
+exports.getAllMessagesByEmailId = onRequest({
+  region: "asia-south1",
+  cors: true,
+}, async (req, res) => {
+  try {
+    // Extract the ID token from the request headers
+    const idToken = req.headers.authorization;
+    if (!idToken) {
+      return res.status(400).send("ID token is missing");
+    }
+
+    let decodedToken;
+    try {
+      decodedToken = await verifyToken(idToken);
+    } catch (error) {
+      if (error.code === "auth/id-token-expired") {
+        return res.status(401).send("ID token has expired");
+      }
+      return res.status(401).send("Invalid ID token");
+    }
+
+    if (!decodedToken) {
+      return res.status(401).send("Invalid ID token");
+    }
+
+    // Extract user information from the token
+    const userEmail = decodedToken.email;
+
+    // Extract the email of the user whose messages are to be retrieved
+    const email = req.query.email;
+
+    // Construct conversation ID for the requested user
+    const chatRef = db.collection("chats").doc(userEmail);
+    const conversationRef = chatRef.
+        collection(email).doc("messages");
+
+    // Retrieve all messages from the conversation
+    const conversationDoc = await conversationRef.get();
+    if (!conversationDoc.exists) {
+      return res.status(404).send([]);
+    }
+
+    // Get the messages and mark them as read
+    const messages = conversationDoc.data().messages || [];
+    if (messages.length > 0) {
+      // Update the isRead status for each message to true
+      const updatedMessages = messages.
+          map((message) => ({...message, isRead: true}));
+
+      // Update the messages in the database
+      await conversationRef.update({messages: updatedMessages});
+    }
+
+    res.status(200).json(messages);
+  } catch (error) {
+    logger.error("Error:", error);
+    res.status(500).send("Internal Server Error");
+  }
+});

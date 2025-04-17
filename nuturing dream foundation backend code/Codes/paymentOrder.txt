@@ -1,0 +1,109 @@
+const {logger} = require("firebase-functions");
+const {onRequest} = require("firebase-functions/v2/https");
+const {initializeApp} = require("firebase-admin/app");
+const admin = require("firebase-admin");
+const dotenv = require("dotenv");
+const crypto = require("crypto");
+const Razorpay = require("razorpay");
+
+initializeApp();
+const firestore = admin.firestore();
+dotenv.config();
+
+
+exports.paymentOrder = onRequest({
+  region: "asia-south1", cors: true,
+}, async (req, res) => {
+  try {
+    // Retrieve user type, email, and other required data from request body
+    const userType = req.query.userType;
+    const email = req.query.email;
+    const currentDate = new Date();
+    // Fetch amount from Firestore based on user type
+    const amountDoc = await firestore.collection("amounts").doc(userType).get();
+    const amountData = amountDoc.data();
+
+    // If amount is not found for the given user type
+    if (!amountData) {
+      return res.status(404).
+          json({"message": "Amount not found for the specified user type."});
+    }
+
+    const amount = amountData.amount;
+
+    const instance = new Razorpay({
+      "key_id": "rzp_test_SbCz2Xu4XrxFu9",
+      "key_secret": "8op8cYPBoSmqNlXoJphvpvjE",
+    });
+
+    const options = {
+      "amount": amount * 100,
+      "currency": "INR",
+      "receipt": crypto.randomBytes(10).toString("hex"),
+    };
+
+    // Create Razorpay order
+    instance.orders.create(options, async (error, order) => {
+      if (error) {
+        console.log(error);
+        return res.status(500).json({"message": "Something Went Wrong!"});
+      }
+
+      // Check if payment record exists, if not create, if present update
+      const paymentRef = firestore.collection("payments").doc(email);
+      const paymentDoc = await paymentRef.get();
+
+      if (paymentDoc.exists) {
+        // Update existing payment record
+        try {
+          const existingPaymentData = paymentDoc.data();
+          let updatedPayments = [];
+          if (existingPaymentData && Array.
+              isArray(existingPaymentData.payments)) {
+            updatedPayments = existingPaymentData.payments.slice();
+          }
+          updatedPayments.push({
+            "orderID": order.id,
+            "paymentID": null,
+            "receiptID": options.receipt,
+            "paymentSuccess": false,
+            "orderDate": currentDate,
+            "paymentDate": null,
+          });
+
+          await paymentRef.update({
+            "payments": updatedPayments,
+          });
+        } catch (error) {
+          res.status(500).json({"message": "Internal Server Error!"});
+          logger.log(error);
+          return;
+        }
+      } else {
+        // Create new payment record
+        try {
+          await paymentRef.set({
+            "payments": [{
+              "orderID": order.id,
+              "paymentID": null,
+              "receiptID": options.receipt,
+              "paymentSuccess": false,
+              "orderDate": currentDate,
+              "paymentDate": null,
+            }],
+          });
+        } catch (error) {
+          res.status(500).json({"message": "Internal Server Error!"});
+          logger.log(error);
+          return;
+        }
+      }
+      // Send response
+      res.status(200).json({"data": order});
+    });
+  } catch (error) {
+    res.status(500).json({"message": "Internal Server Error!"});
+    logger.log(error);
+  }
+});
+

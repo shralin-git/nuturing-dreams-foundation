@@ -1,0 +1,84 @@
+const {logger} = require("firebase-functions");
+const {onRequest} = require("firebase-functions/v2/https");
+const {initializeApp} = require("firebase-admin/app");
+const {getFirestore} = require("firebase-admin/firestore");
+const admin = require("firebase-admin");
+
+initializeApp();
+
+// const db = admin.firestore();
+const firestore = admin.firestore();
+/**
+ * Verifies an authentication token.
+ *
+ * @param {string} idToken - The ID token to verify.
+ * @return {Promise<object>} - Decoded token information.
+ * @throws {Error} - If verification fails.
+ */
+async function verifyToken(idToken) {
+  const decodedToken = await admin.auth().verifyIdToken(idToken);
+  return decodedToken;
+}
+
+/**
+ * Checks if a user is an admin.
+ *
+ * @param {string} email - The email address of the user.
+ * @return {Promise<boolean>}
+ * @throws {Error} - If an error occurs during the process.
+ */
+async function isAdminUser(email) {
+  const firestore = getFirestore();
+  const donorDoc = await firestore.
+      collection("financial Institution").doc(email).get();
+  return donorDoc.exists;
+}
+
+
+exports.loanProductStatus = onRequest({
+  region: "asia-south1", cors: true,
+}, async (req, res) => {
+  try {
+    const idToken = req.headers.authorization;
+    if (!idToken) {
+      return res.status(400).send("ID token is missing");
+    }
+
+    let decodedToken;
+    try {
+      decodedToken = await verifyToken(idToken);
+    } catch (error) {
+      if (error.code === "auth/id-token-expired") {
+        return res.status(401).send("ID token has expired");
+      }
+      return res.status(401).send("Invalid ID token");
+    }
+
+    if (!decodedToken) {
+      return res.status(401).send("Invalid ID token");
+    }
+
+    const financialInstitution = decodedToken.email;
+    const isAdmin = await isAdminUser(financialInstitution);
+    if (!isAdmin) {
+      return res.status(403).
+          send("Only financial Institution can apply this Application");
+    }
+
+    const createdBy = financialInstitution;
+
+    const loanRef = firestore.
+        collection("loans").where("createdBy", "==", createdBy).get();
+
+    const loans = [];
+    (await loanRef).forEach((doc) => {
+      const {product, type, status} = doc.data();
+      const loanId = doc.id;
+      loans.push({loanId, product, type, status});
+    });
+    res.status(200).json({loans});
+  } catch (error) {
+    logger.error(error);
+    res.status(500).json({error: "Internal Server Error"});
+  }
+});

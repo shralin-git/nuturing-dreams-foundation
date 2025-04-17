@@ -1,0 +1,238 @@
+const {logger} = require("firebase-functions");
+const {https} = require("firebase-functions/v2");
+const {initializeApp} = require("firebase-admin/app");
+
+initializeApp();
+
+const express = require("express");
+const bodyParser = require("body-parser");
+const admin = require("firebase-admin");
+const nodemailer = require("nodemailer");
+
+const app = express();
+
+const auth = admin.auth();
+const db = admin.firestore();
+
+app.use(bodyParser.json());
+
+const verifyToken = async (idToken) => {
+  const decodedToken = await admin.auth().verifyIdToken(idToken);
+  return decodedToken;
+};
+
+const generateRandomPassword = () => {
+  const length = 8;
+  const charset = "abcdefghijklmnopqrstuvwxyzABCD"+
+  "EFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  let password = "";
+  for (let i = 0; i < length; i++) {
+    const randomIndex = Math.floor(Math.random() * charset.length);
+    password += charset[randomIndex];
+  }
+  return password;
+};
+
+const sendMail = async (mailOptions) => {
+  try {
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: "nurturingdreamsfoundation@gmail.com",
+        pass: "kakt hpql pdvw byid",
+      },
+    });
+    await transporter.sendMail(mailOptions);
+  } catch (error) {
+    logger.error("Error sending email:", error);
+    throw error;
+  }
+};
+const getFirstnameOrInstitutionName = async (username) => {
+  const registrationRef = db.
+      collection("registrationApplications").doc(username);
+  const registrationDoc = await registrationRef.get();
+  if (registrationDoc.exists) {
+    const {firstName, institutionName} = registrationDoc.data();
+    return firstName || institutionName || "User";
+  } else {
+    throw new Error("User not found in registration applications.");
+  }
+};
+
+const registerUser = async (decodedToken, username, status, res, remarks) => {
+  const processedBy = decodedToken.email;
+  const userSnapshot = await db.collection("admin").doc(processedBy).get();
+  if (!userSnapshot.exists) {
+    return res.status(410).json({message: "Authorization failed: Only "+
+    "admins are authorized to perform this action."});
+  }
+  const registrationRef =
+     db.collection("registrationApplications").doc(username);
+  const registrationDoc = await registrationRef.get();
+  if (!registrationDoc.exists) {
+    return res.status(404).json({message: "User not found in registration"+
+  " applications. Please provide a valid username."});
+  }
+  const {userType} = registrationDoc.data();
+  const name = await getFirstnameOrInstitutionName(username);
+  const processedDate = new Date();
+  const updateData = {status, processedBy, processedDate};
+  if (remarks) {
+    updateData.remarks = remarks; // Store remarks if provided
+  }
+  await registrationRef.update(updateData);
+  return {processedBy, userType, name};
+};
+const createUserInFirestore = async (username, userType, processedBy) => {
+  const userDocRef = db.collection(userType).doc(username);
+  await userDocRef.set({processedBy});
+
+  if (userType === "student" || userType === "mentor" ||
+     userType === "donor" || userType === "institution"||
+     userType === "financial Institution") {
+    const registrationRef =
+    db.collection("registrationApplications").doc(username);
+    const registrationDoc = await registrationRef.get();
+    if (registrationDoc.exists) {
+      const userData = registrationDoc.data();
+      await db.collection(userType).doc(username).set(userData);
+    }
+    if (registrationDoc.exists) {
+      const userData = registrationDoc.data();
+      // Add the isFirstTime field to userData and set it to true
+      userData.isFirstTime = true;
+
+      await userDocRef.set(userData);
+    }
+  }
+};
+const createUser = async (username, password) => {
+  {
+    const userRecord = await auth.createUser({email: username, password});
+    return userRecord;
+  }
+};
+
+exports.registerUser = https.onRequest({
+  region: "asia-south1", cors: true,
+}, async (req, res) => {
+  try {
+    const idToken = req.headers.authorization;
+    if (!idToken) {
+      return res.status(401).json({message: "Authentication"+
+      " failed: No token provided. Please try again."});
+    }
+    const decodedToken = await verifyToken(idToken);
+    if (!decodedToken) {
+      return res.status(403).json({message: "Authentication failed:"+
+      "Invalid token. Please try again."});
+    }
+    const {username, status, remarks=""} = req.body;
+    const {processedBy, userType, name} =
+     await registerUser(decodedToken, username, status, res, remarks);
+    if (status === "approve") {
+      const userExists = await auth.getUserByEmail(username).catch((error) => {
+        if (error.code !== "auth/user-not-found") {
+          throw error;
+        }
+      });
+      if (!userExists) {
+        const password = generateRandomPassword();
+        await createUser(username, password);
+        const mailOptions = {
+          from: `"Nurturing Dreams Foundation" <
+          nurturingdreamsfoundation@gmail.com>`,
+          to: username,
+          subject: "Congratulations! Your application has been approved.",
+          html: `<p>Dear ${name},</p>
+            <p>Congratulations! Your application has been approved
+            for registration. We are delighted to welcome you to
+            our community and you can now access our platform and
+            explore a range of exciting offers.</p>
+            <p>Your account username is: <strong>${username}</strong></p>
+            <p>Your account password is: <strong>${password}</strong></p>
+            ${remarks ? `<p><strong>Remarks:</strong> ${remarks}</p>` : ""}
+            <p>You can now log in using above username and password. Remember,
+             you can reset your password after logging in.</p>
+
+            <p>Best regards,<br>
+            <strong>Nurturing Dreams Foundation</strong></p>`,
+        };
+        await sendMail(mailOptions);
+        await createUserInFirestore(username, userType, processedBy);
+
+        const registrationDoc =
+         await db.collection("registrationApplications").doc(username).get();
+        if (!registrationDoc.exists) {
+          return res.status(404).json({message: "User not found "+
+          "in registration applications. Please provide a valid username."});
+        }
+
+        const userData = registrationDoc.data();
+        const userTypeFromData = userData ? userData.userType : null;
+
+        if (!userTypeFromData) {
+          return res.status(404).json({message: "User type"+
+          " not found in registration data."});
+        }
+
+        return res.status(201).json({
+          message: "Registration successful: An email"+
+          " containing login credentials has been sent.",
+          // userType: userTypeFromData // Include only user type in response
+        });
+      } else {
+        return res.status(409).json({message:
+           "Registration failed: The user data has already been updated,"+
+           " and the username is already registered."});
+      }
+    } else if (status === "reject" || status === "hold") {
+      const mailOptions = {
+        from: `"Nurturing Dreams Foundation" <
+        nurturingdreamsfoundation@gmail.com>`,
+        to: username,
+        subject: "Application status update",
+        html: `<p>Dear ${name},</p>
+          <p>We regret to inform you that your application has been
+          ${status === "reject" ? "rejected" : "put on hold"}.</p>
+          ${remarks ? `<p><strong>Remarks:</strong> ${remarks}</p>` : ""}
+          <p>Please contact the administrator at
+          nurturingdreamsfoundation@gmail.com for
+          further details.</p>
+          <p>Best regards,<br><strong>Nurturing
+          Dreams Foundation</strong></p>`,
+      };
+
+      await sendMail(mailOptions);
+
+      return res.status(200).json({
+        message: `Application ${status === "reject" ?
+        "rejected" : "put on hold"}: `+
+        `An email notification has been sent to the user.`,
+      });
+    } else {
+      return res.status(200).json({message: "Application"+
+      " not approved: User not registered."});
+    }
+  } catch (error) {
+    logger.error("Error registering user:", error);
+    if (error.code === "auth/id-token-expired" ||
+    error.code === "auth/id-token-revoked") {
+      return res.status(401).json({message: "Authentication failed:"+
+      " Token expired. Please log in again."});
+    } else if (error.code === "auth/id-token-invalid") {
+      return res.status(401).json({message: "Authentication failed:"+
+      " Invalid token. Please log in again."});
+    } else if (error.code === "auth/argument-error") {
+      return res.status(401).json({message: "Authentication failed:"+
+      " Invalid token format. Please log in again."});
+    } else if (error.code === "auth/user-not-found") {
+      return res.status(404).json({message: "User not found in "+
+      " registration applications. Please provide a valid username."});
+    } else {
+      return res.status(500).json({message: "Internal server error"});
+    }
+  }
+});
+

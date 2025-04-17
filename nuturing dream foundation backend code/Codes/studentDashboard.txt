@@ -1,0 +1,100 @@
+const {logger} = require("firebase-functions");
+const {onRequest} = require("firebase-functions/v2/https");
+// const {initializeApp} = require("firebase-admin/app");
+const admin = require("firebase-admin");
+const serviceAccount = require("./key.json");
+// const cors = require("cors");
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+exports.studentDashboard = onRequest({
+  region: "asia-south1", cors: true,
+}, async (req, res) => {
+  try {
+    const idToken = req.headers.authorization;
+    if (!idToken) {
+      return res.status(401).json({
+        "message": "No token provided. Authorization required.",
+      });
+    }
+
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    if (!decodedToken) {
+      return res.status(401).json({
+        "message": "Invalid token. Please log in again.",
+      });
+    }
+    const db = admin.firestore();
+
+    const tokenExpirationTime = decodedToken.exp * 1000;
+    const currentTime = Date.now();
+    if (tokenExpirationTime < currentTime) {
+      return res.status(401).json({
+        "message": "Token has expired. Please log in again.",
+      });
+    }
+
+    const userId = decodedToken.email;
+    const snapshot = await db.collection("scholarshipApplications")
+        .doc(userId)
+        .collection("scholarshipIds")
+        .get();
+
+    let TotalApplications = 0;
+    let ApprovedApplications = 0;
+    let HoldApplications = 0;
+    let RejectedApplications = 0;
+    let newApplications = 0;
+
+    snapshot.forEach((doc) => {
+      TotalApplications++;
+      const status = doc.data().status;
+      if (status === "approve") {
+        ApprovedApplications++;
+      } else if (status === "hold") {
+        HoldApplications++;
+      } else if (status === "reject") {
+        RejectedApplications++;
+      } else if (status === "new") {
+        newApplications++;
+      }
+    });
+
+    const studentDashboardData = {
+      "Total Scholarship Applications": ""+""+ TotalApplications,
+      "Approved Scholarship Applications": ""+"" + ApprovedApplications,
+      "Hold Scholarship Applications": ""+""+ HoldApplications,
+      "Rejected Scholarship Applications": ""+""+ RejectedApplications,
+      "New Scholarship Applications": ""+""+ newApplications,
+    };
+    res.json(studentDashboardData);
+  } catch (error) {
+    logger.error("Error retrieving student dashboard data:", error);
+    if (error.code === "auth/id-token-expired" ||
+    error.code === "auth/id-token-revoked") {
+      return res.status(401).json({
+        "message": "Authentication failed: "+
+        "Token expired. Please log in again.",
+      });
+    } else if (error.code === "auth/id-token-invalid") {
+      return res.status(401).json({
+        "message": "Authentication failed: "+
+        "Invalid token. Please log in again.",
+      });
+    } else if (error.code === "auth/argument-error") {
+      return res.status(401).json({
+        "message": "Authentication failed: Invalid token"+
+        " format. Please log in again.",
+      });
+    } else if (error.code === "auth/user-not-found") {
+      return res.status(404).json({
+        "message": "User not found in registration applications."+
+        " Please provide a valid username.",
+      });
+    } else {
+      return res.status(500).json({
+        "message": "Internal server error",
+      });
+    }
+  }
+});

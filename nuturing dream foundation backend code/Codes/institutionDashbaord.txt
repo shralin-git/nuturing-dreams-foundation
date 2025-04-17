@@ -1,0 +1,125 @@
+const {logger} = require("firebase-functions");
+const {onRequest} = require("firebase-functions/v2/https");
+const {initializeApp} = require("firebase-admin/app");
+const admin = require("firebase-admin");
+const {getFirestore} = require("firebase-admin/firestore");
+initializeApp();
+const db = admin.firestore();
+/**
+ * Verifies an authentication token.
+ *
+ * @param {string} idToken - The ID token to verify.
+ * @return {Promise<object>} - Decoded token information.
+ * @throws {Error} - If verification fails.
+ */
+async function verifyToken(idToken) {
+  const decodedToken = await admin.auth().verifyIdToken(idToken);
+  return decodedToken;
+}
+
+/**
+ * Checks if a user is an admin or a student.
+ *
+ * @param {string} email - The email address of the user.
+ * @return {Promise<boolean>} - Returns.
+ * @throws {Error} - If an error occurs during the process.
+ */
+async function isAuthorizedUser(email) {
+  const firestore = getFirestore();
+
+  // Check if the user is an admin
+  const adminDoc = await firestore.
+      collection("institution").doc(email).get();
+  if (adminDoc.exists) {
+    return true;
+  }
+  // If the user is neither admin nor student
+  return false;
+}
+
+exports.institutionDashbaord = onRequest({
+  region: "asia-south1",
+  cors: true,
+}, async (req, res) => {
+  try {
+    const institutionname = req.query.institutionname;
+    // Extract the ID token from the request headers
+    const idToken = req.headers.authorization;
+    if (!idToken) {
+      return res.status(400).send("ID token is missing");
+    }
+
+    let decodedToken;
+    try {
+      decodedToken = await verifyToken(idToken);
+    } catch (error) {
+      if (error.code === "auth/id-token-expired") {
+        return res.status(401).send("ID token has expired");
+      }
+      return res.status(401).send("Invalid ID token");
+    }
+    if (!decodedToken) {
+      return res.status(401).send("Invalid ID token");
+    }
+
+    // Extract user information from the token
+    const adminEmail = decodedToken.email;
+    const isAdmin = await isAuthorizedUser(adminEmail);
+    if (!isAdmin) {
+      return res.status(403).
+          send("You are not authorized to access this resource");
+    }
+    if (!institutionname) {
+      return res.status(400).send("Institution name is missing");
+    }
+
+    const usernames = [];
+
+    const studentQuerySnapshot = await db.
+        collection("student").
+        where("otherInstitutionName", "==", institutionname).get();
+
+    studentQuerySnapshot.forEach((doc) => {
+      usernames.push(doc.id);
+    });
+
+    let totalScholarshipIds = 0;
+    let countNew = 0;
+    let countHold = 0;
+    let countApprove = 0;
+    let countReject = 0;
+
+    for (const username of usernames) {
+      const scholarshipDocs = await db
+          .collection("scholarshipApplications")
+          .doc(username)
+          .collection("scholarshipIds")
+          .get();
+
+      scholarshipDocs.forEach((doc) => {
+        totalScholarshipIds++;
+        const status = doc.data().status;
+        if (status === "new") {
+          countNew++;
+        } else if (status === "hold") {
+          countHold++;
+        } else if (status === "approve") {
+          countApprove++;
+        } else if (status === "reject") {
+          countReject++;
+        }
+      });
+    }
+    res.status(200).json({
+      "Total scholarship applications": totalScholarshipIds,
+      "New scholarship applications": countNew,
+      "Hold scholarship applications": countHold,
+      "Approve scholarship applications": countApprove,
+      "Reject scholarship applications": countReject,
+    });
+  } catch (error) {
+    logger.error(error);
+    res.status(500).json({message: "Internal Server Error"});
+  }
+});
+

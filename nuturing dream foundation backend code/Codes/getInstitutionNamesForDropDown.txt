@@ -1,0 +1,38 @@
+const {logger} = require("firebase-functions");
+const {onRequest} = require("firebase-functions/v2/https");
+const {initializeApp} = require("firebase-admin/app");
+const {getFirestore} = require("firebase-admin/firestore");
+initializeApp();
+
+/**
+ * Retrieves a list of unique institution names from Firestore.
+ * @return {Promise<string[]>} An array of unique institution names.
+ */
+async function getUniqueInstitutionNames() {
+  const firestore = getFirestore();
+  const institutionCollection = firestore.collection("institution");
+
+  const snapshot = await institutionCollection.get();
+  const institutionNamesSet = new Set();
+
+  snapshot.forEach((doc) => {
+    const data = doc.data();
+    institutionNamesSet.add(data.institutionName);
+  });
+
+  return Array.from(institutionNamesSet);
+}
+
+exports.getInstitutionNamesForDropDown = onRequest({
+  region: "asia-south1",
+  cors: true,
+}, async (req, res) => {
+  try {
+    const institutionNames = await getUniqueInstitutionNames();
+    res.status(200).json({institutionNames});
+  } catch (error) {
+    logger.error("Error retrieving institution names:", error);
+    res.status(500).json({message: "Internal server error."});
+  }
+});
+

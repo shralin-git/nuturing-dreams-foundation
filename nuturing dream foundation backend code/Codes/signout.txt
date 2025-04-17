@@ -1,0 +1,46 @@
+
+const {logger} = require("firebase-functions");
+const {onRequest} = require("firebase-functions/v2/https");
+// const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+// const cors = require("cors");
+// The Firebase Admin SDK to access Firestore.
+const {initializeApp} = require("firebase-admin/app");
+// const { getFirestore } = require("firebase-admin/firestore");
+
+initializeApp();
+
+// Middleware to parse JSON requests
+const express = require("express");
+const bodyParser = require("body-parser");
+const admin = require("firebase-admin");
+
+const app = express();
+
+app.use(bodyParser.json());
+
+// Cloud Function for sign-out endpoint
+exports.signout = onRequest({
+  region: "asia-south1", cors: true,
+}, async (req, res) => {
+  const {idToken} = req.body;
+  try {
+    if (!idToken) {
+      return res.status(215).json({message: "idToken token is"+
+      "required please try again"});
+    }
+    // Verify the ID token to get the user's UID
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    const uid = decodedToken.uid;
+
+    // Revoke all refresh tokens for the user
+    await admin.auth().revokeRefreshTokens(uid);
+
+    // Respond with success
+    res.status(200).json({message: "User successfully signed out"});
+  } catch (error) {
+    logger.error("Error signing out user:", error);
+    res.status(500).json({error: "An error occurred while signing out"});
+  }
+});
+
+

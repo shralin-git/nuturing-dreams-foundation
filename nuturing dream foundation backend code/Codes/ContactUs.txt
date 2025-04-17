@@ -1,0 +1,136 @@
+const {logger} = require("firebase-functions");
+const {onRequest} = require("firebase-functions/v2/https");
+const {initializeApp} = require("firebase-admin/app");
+const admin = require("firebase-admin");
+const nodemailer = require("nodemailer");
+
+initializeApp();
+
+const db = admin.firestore();
+
+/**
+ * Validates an email address.
+ * @param {string} email The email address to validate.
+ * @return {boolean} `true` if the email is valid, otherwise `false`.
+ */
+function isValidEmail(email) {
+  const re = /\S+@\S+\.\S+/;
+  return re.test(email);
+}
+
+/**
+ * Validates a phone number.
+ * @param {string} phoneNumber The phone number to validate.
+ * @return {boolean} `true` if the phone number is valid, otherwise `false`.
+ */
+function isValidPhoneNumber(phoneNumber) {
+  const re = /^\d{10}$/;
+  return re.test(phoneNumber);
+}
+// Nodemailer transporter setup
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: "nurturingdreamsfoundation@gmail.com",
+    pass: "kakt hpql pdvw byid",
+  },
+});
+
+// API endpoint to retrieve user information
+exports.ContactUs = onRequest({
+  region: "asia-south1",
+  cors: true,
+}, async (req, res) => {
+  try {
+    const {
+      firstName,
+      lastName,
+      phoneNumber,
+      email,
+      query,
+    } = req.body;
+
+    // Validate email format
+    if (!isValidEmail(email)) {
+      return res.status(400).json({error: "Invalid email format"});
+    }
+
+    // Validate phone number format
+    if (!isValidPhoneNumber(phoneNumber)) {
+      return res.status(400).json({error: "Invalid phone number format"});
+    }
+    const userMailOptions = {
+      from: `"Nurturing Dreams Foundation" <
+      nurturingdreamsfoundation@gmail.com>`,
+      to: email,
+      subject: "Your query has been submitted",
+      html: `
+        <p>Dear ${firstName},</p>
+        <p>Your query has been successfully submitted.</p>
+        <p>We will shortly reply to your query.</p>
+        <p>In the meantime, if you have any other questions
+         or need further assistance, feel free to reach out.</p>
+        <p>Thank you for contacting us.</p>
+        <p>Sincerely,</p>
+        <p><strong>Nurturing Dreams Foundation</strong></p>
+      `,
+    };
+
+    transporter.sendMail(userMailOptions, (error, info) => {
+      if (error) {
+        console.error("Error sending email:", error);
+      } else {
+        console.log("Email sent:", info.response);
+      }
+    });
+
+    // Query the Firestore to get the admin's email
+    const adminSnapshot = await db.
+        collection("admin").where("primary", "==", "Yes").get();
+
+    if (adminSnapshot.empty) {
+      return res.status(404).
+          json({error: "No admin document found with primary field 'Yes'"});
+    }
+
+    // Get the first document (assuming there's only one such document)
+    const adminEmail = adminSnapshot.docs[0].data().email;
+
+    const adminMailOptions = {
+      from: `"Nurturing Dreams Foundation"
+      <nurturingdreamsfoundation@gmail.com>`,
+      to: adminEmail,
+      subject: "New query",
+      html: `
+      <p><strong>Dear admin</strong></p>
+      <p><strong>User informations:</strong></p>
+        <p><strong>Name:</strong> ${firstName} ${lastName}</p>
+        <p><strong>Contact Details:</strong></p>
+        <ul>
+          <li><strong>Phone Number:</strong> ${phoneNumber}</li>
+          <li><strong>Email:</strong> ${email}</li>
+        </ul>
+        <p><strong>User's Query:</strong></p>
+        <p>${query}</p>
+        <p><strong>NOTE :</strong>Please respond to
+        the user promptly.</p>
+        <p>Thank you.</p>
+        <p>Sincerely,</p>
+        <p><strong>Nurturing Dreams Foundation</strong></p>
+      `,
+    };
+
+    transporter.sendMail(adminMailOptions, (error, info) => {
+      if (error) {
+        console.error("Error sending email:", error);
+      } else {
+        console.log("Email sent:", info.response);
+      }
+    });
+
+    res.status(200).json("Your query has been submitted successfully.");
+  } catch (error) {
+    logger.error("Error submitting user query:", error);
+    res.status(500).json({error: "Internal Server Error"});
+  }
+});

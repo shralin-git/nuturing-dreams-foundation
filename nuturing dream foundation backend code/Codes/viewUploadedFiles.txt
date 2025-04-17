@@ -1,0 +1,44 @@
+const {logger} = require("firebase-functions");
+const {onRequest} = require("firebase-functions/v2/https");
+const {Storage} = require("@google-cloud/storage");
+
+// Initialize Firebase Cloud Storage
+const storage = new Storage();
+const bucketName = "nurturingdreamsfoundatio-451b5";
+
+// Cloud Function to retrieve and view uploaded files
+exports.viewUploadedFiles = onRequest(async (req, res) => {
+  try {
+    // Extract the username from the request query parameters
+    const username = req.query.username;
+
+    // Check if username is provided
+    if (!username) {
+      return res.status(400).json({error: "Username is required"});
+    }
+
+    // Reference to the bucket
+    const bucket = storage.bucket(bucketName);
+
+    // Get files list from the bucket
+    const [files] = await bucket.getFiles({prefix: `${username}/`});
+
+    // Check if files exist
+    if (!files || files.length === 0) {
+      return res.status(404).json({error: "No files found for the user"});
+    }
+
+    // Extract file URLs and send them in the response
+    const fileUrls = files.map((file) => {
+      return {
+        filename: file.name,
+        url: `https://storage.googleapis.com/${bucket.name}/${file.name}`,
+      };
+    });
+
+    res.status(200).json({files: fileUrls});
+  } catch (error) {
+    logger.error("Error retrieving files:", error);
+    res.status(500).json({error: "Internal Server Error"});
+  }
+});

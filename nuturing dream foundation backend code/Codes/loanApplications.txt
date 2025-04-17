@@ -1,0 +1,173 @@
+const {logger} = require("firebase-functions");
+const {https} = require("firebase-functions/v2");
+const {initializeApp} = require("firebase-admin/app");
+const express = require("express");
+const admin = require("firebase-admin");
+const nodemailer = require("nodemailer");
+
+// const cors = require("cors");
+initializeApp();
+const db = admin.firestore(); // Get Firestore instance
+const app = express(); // Create Express app
+
+// Middleware to parse JSON and URL-encoded bodies
+app.use(express.json());
+app.use(express.urlencoded({extended: true}));
+
+// Nodemailer transporter setup
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: "nurturingdreamsfoundation@gmail.com",
+    pass: "kakt hpql pdvw byid",
+  },
+});
+
+// Middleware function to verify JWT token
+const verifyTokenMiddleware = async (req, res) => {
+  const idToken = req.headers.authorization;
+  if (!idToken) {
+    return res.status(400).json({message: "Authentication failed:"+
+    " No token provided. Please try again."});
+  }
+  try {
+    // Verify the ID token
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    if (!decodedToken) {
+      return res.status(401).json({message: "Authentication failed:"+
+      " Invalid token. Please try again."});
+    }
+    req.decodedToken = decodedToken;
+
+    // Check if the userId exists in the students table
+    const studentDoc =
+    await db.collection("student").doc(decodedToken.email).get();
+    if (!studentDoc.exists) {
+      return res.status(403).json({message: "You are not approved"+
+      " or registered. Please try again."});
+    }
+
+    // If everything is fine, return true to indicate success
+    return true;
+  } catch (error) {
+    // Handle errors
+    if (error.code === "auth/id-token-expired" ||
+     error.code === "auth/id-token-revoked") {
+      return res.status(404).json({message: "Authentication failed:"+
+      "Token expired. Please try again."});
+    } else {
+      logger.error("Error verifying ID token:", error);
+      return res.status(500).json({message: "Internal server error"});
+    }
+  }
+};
+
+// Apply middleware to the scholarship application endpoint
+exports.loanApplications = https.onRequest(
+
+    {region: "asia-south1", cors: true,
+    }, async (req, res) => {
+      try {
+        // Verify token
+        const verified = await verifyTokenMiddleware(req, res);
+        if (!verified) {
+          // If verification fails, return to prevent further execution
+          return;
+        }
+
+        // If verification succeeds, continue with your route logic
+        // Extract data from request body
+        const {type, product, notes} = req.body;
+        const decodedEmail = req.decodedToken.email;
+
+        // Check if all required fields are provided
+        if (!type || !product) {
+          return res.status(400).json({message: "All fields are required"});
+        }
+        // Fetch student document from Firestore
+        const studentDoc = await db.
+            collection("student").doc(decodedEmail).get();
+        if (!studentDoc.exists) {
+          return res.status(403).json({message: "You are not approved "+
+          " or registered. Please try again."});
+        }
+
+        const {firstName, lastName} = studentDoc.data();
+
+        // Generate a unique scholarshipId
+        const loanId = generateScholarshipId();
+        const currentDate = new Date();
+
+        // Default status for a new application
+        const status = "new";
+        const processedBy = "";
+        const processedDate = "";
+        const username= decodedEmail;
+
+        // Scholarship application object
+        const scholarship = {
+          loanId,
+          username,
+          firstName,
+          lastName,
+          date: currentDate,
+          type,
+          product,
+          status,
+          processedBy,
+          processedDate,
+          notes,
+        };
+
+        // Store the scholarship application in Firestore
+        await db.collection("loanApplications").doc(username)
+            .collection("loanIds").doc(loanId).set(scholarship);
+        // Send scholarship ID via email
+
+        const mailOptions = {
+          from: `"Nurturing Dreams Foundation" <
+          nurturingdreamsfoundation@gmail.com>`,
+          to: req.body.username,
+          subject: "Loan application confirmation",
+          html: `
+            <p>Dear ${firstName},</p>
+            <p>Your loan application has been successfully submitted.</p>
+            <ul>
+              <li><strong>Loan ID:</strong> ${loanId}</li>
+              <li><strong>Loan Name:</strong> ${type}</li>
+              <li><strong>Loan Purpose:</strong> ${product}</li>
+            </ul>
+            <p>Thank you for your application.</p>
+            <p><strong>Please note that your application is currently under
+            review and has not been approved yet. Once approved by the admin,
+             you will receive another email notification.</strong></p>
+            <p>Sincerely,</p>
+            <p><strong>Nurturing Dreams Foundation</strong></p>
+          `,
+        };
+        transporter.sendMail(mailOptions, (error, info) => {
+          if (error) {
+            console.error("Error sending email:", error);
+          } else {
+            console.log("Email sent:", info.response);
+          }
+        });
+
+        // Send response with applicationId and status
+        res.status(201).json({message: "Your application is"+
+       " submitted successfully and" +
+       " application ID is :", applicationId: loanId});
+      } catch (error) {
+        // Handle errors
+        logger.error(error);
+        res.status(500).json({message: "Internal Server Error"});
+      }
+    });
+
+/**
+ * Generates a unique scholarship ID.
+ * @return {string} A random alphanumeric string.
+ */
+function generateScholarshipId() {
+  return Math.random().toString(36).substr(2, 9);
+}

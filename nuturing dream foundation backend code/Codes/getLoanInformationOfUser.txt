@@ -1,0 +1,93 @@
+const {logger} = require("firebase-functions");
+const {onRequest} = require("firebase-functions/v2/https");
+const {initializeApp} = require("firebase-admin/app");
+const {getFirestore} = require("firebase-admin/firestore");
+const admin = require("firebase-admin");
+
+initializeApp();
+
+const db = admin.firestore();
+
+// const firestore = admin.firestore();
+/**
+ * Verifies an authentication token.
+ *
+ * @param {string} idToken - The ID token to verify.
+ * @return {Promise<object>} - Decoded token information.
+ * @throws {Error} - If verification fails.
+ */
+async function verifyToken(idToken) {
+  const decodedToken = await admin.auth().verifyIdToken(idToken);
+  return decodedToken;
+}
+
+/**
+ * Checks if a user is an admin or donor.
+ *
+ * @param {string} email - The email address of the user.
+ * @return {Promise<boolean>}
+ * @throws {Error} - If an error occurs during the process.
+ */
+async function isAuthorizedUser(email) {
+  const firestore = getFirestore();
+  const adminDoc = await firestore.
+      collection("admin").doc(email).get();
+  const donorDoc = await firestore.
+      collection("student").doc(email).get();
+  const finacialDoc = await firestore.
+      collection("financial Institution").doc(email).get();
+  return adminDoc.exists || donorDoc.exists ||
+  finacialDoc.exists;
+}
+
+exports.getLoanInformationOfUser = onRequest({
+  region: "asia-south1",
+  cors: true,
+}, async (req, res) => {
+  try {
+    const idToken = req.headers.authorization;
+    if (!idToken) {
+      return res.status(400).send("ID token is missing");
+    }
+
+    let decodedToken;
+    try {
+      decodedToken = await verifyToken(idToken);
+    } catch (error) {
+      if (error.code === "auth/id-token-expired") {
+        return res.status(401).send("ID token has expired");
+      }
+      return res.status(401).send("Invalid ID token");
+    }
+
+    if (!decodedToken) {
+      return res.status(401).send("Invalid ID token");
+    }
+
+    const username = decodedToken.email;
+    const isAuthorized = await isAuthorizedUser(username);
+    if (!isAuthorized) {
+      return res.status(403).send("You are not authorized" +
+        " to view user information");
+    }
+
+    const scholarshipDocs = await db.
+        collection("loanApplications").doc(username)
+        .collection("loanIds").get();
+
+    const scholarshipList = [];
+    scholarshipDocs.forEach((doc) => {
+      scholarshipList.push({
+        id: doc.id,
+        status: doc.data().status,
+        product: doc.data().product,
+        type: doc.data().type,
+      });
+    });
+
+    res.status(200).json({loans: scholarshipList});
+  } catch (error) {
+    logger.error("Error fetching loan information:", error);
+    res.status(500).json({message: "Internal Server Error"});
+  }
+});

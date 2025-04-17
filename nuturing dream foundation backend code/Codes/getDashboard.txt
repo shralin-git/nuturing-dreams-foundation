@@ -1,0 +1,534 @@
+const {logger} = require("firebase-functions");
+const {onRequest} = require("firebase-functions/v2/https");
+const {initializeApp} = require("firebase-admin/app");
+const admin = require("firebase-admin");
+
+initializeApp();
+
+const db = admin.firestore();
+const firestore = admin.firestore();
+
+/**
+ * Verifies an authentication token.
+ *
+ * @param {string} idToken - The ID token to verify.
+ * @return {Promise<object>} - Decoded token information.
+ * @throws {Error} - If verification fails.
+ */
+async function verifyToken(idToken) {
+  const decodedToken = await admin.auth().verifyIdToken(idToken);
+  return decodedToken;
+}
+
+/**
+ * Retrieves the user type based on email.
+ *
+ * @param {string} email - The email address of the user.
+ * @return {Promise<string|null>} - User type or null if not found.
+ */
+async function getUserType(email) {
+  const collections = ["student", "admin", "institution",
+    "donor", "financial Institution"];
+  for (const collection of collections) {
+    const doc = await firestore.collection(collection).doc(email).get();
+    if (doc.exists) {
+      return collection;
+    }
+  }
+  return null;
+}
+
+/**
+ * Retrieves the student dashboard data.
+ *
+ * @param {string} email - The email address of the user.
+ * @param {Object} res - The response object.
+ * @return {Object} - Student dashboard data.
+ */
+async function studentDashboard(email) {
+  const snapshot = await db.collection("scholarshipApplications")
+      .doc(email)
+      .collection("scholarshipIds")
+      .get();
+
+  let TotalApplications = 0;
+  let ApprovedApplications = 0;
+  let HoldApplications = 0;
+  let RejectedApplications = 0;
+  let newApplications = 0;
+
+  snapshot.forEach((doc) => {
+    TotalApplications++;
+    const status = doc.data().status;
+    if (status === "approve") {
+      ApprovedApplications++;
+    } else if (status === "hold") {
+      HoldApplications++;
+    } else if (status === "reject") {
+      RejectedApplications++;
+    } else if (status === "new") {
+      newApplications++;
+    }
+  });
+
+  const snapshots = await db.collection("loanApplications")
+      .doc(email)
+      .collection("loanIds")
+      .get();
+
+  let TotalLoanApplications = 0;
+  let ApprovedLoanApplications = 0;
+  let HoldLoanApplications = 0;
+  let RejectedLoanApplications = 0;
+  let newLoanApplications = 0;
+
+  snapshots.forEach((doc) => {
+    TotalLoanApplications++;
+    const status = doc.data().status;
+    if (status === "approve") {
+      ApprovedLoanApplications++;
+    } else if (status === "hold") {
+      HoldLoanApplications++;
+    } else if (status === "reject") {
+      RejectedLoanApplications++;
+    } else if (status === "new") {
+      newLoanApplications++;
+    }
+  });
+
+  const studentDashboardData = {
+    "Total Scholarship Applications": ""+""+ TotalApplications,
+    "Approved Scholarship Applications": ""+"" + ApprovedApplications,
+    "Hold Scholarship Applications": ""+""+ HoldApplications,
+    "Rejected Scholarship Applications": ""+""+ RejectedApplications,
+    "New Scholarship Applications": ""+""+ newApplications,
+    "Total Loan Applications": ""+""+ TotalLoanApplications,
+    "Approved Loan Applications": ""+"" + ApprovedLoanApplications,
+    "Hold Loan Applications": ""+""+ HoldLoanApplications,
+    "Rejected Loan Applications": ""+""+ RejectedLoanApplications,
+    "New Loan Applications": ""+""+ newLoanApplications,
+  };
+  return studentDashboardData;
+}
+
+/**
+ * Retrieves the institution dashboard data.
+ *
+ * @param {string} email - The email address of the user.
+ * @param {Object} res - The response object.
+ * @return {Object} - Institution dashboard data.
+ */
+async function institutionDashboard(email, res) {
+  /**
+ * Retrieves the institution name from the email.
+ *
+ * @param {string} email - The email address of the user.
+ * @return {string|null} - The institution name.
+*/
+  async function getInstitutionName(email) {
+    try {
+      const institutionDoc = await db.
+          collection("institution").doc(email).get();
+      if (institutionDoc.exists) {
+        return institutionDoc.data().institutionName;
+      } else {
+        return null; // Institution not found for the provided email
+      }
+    } catch (error) {
+      logger.error("Error retrieving institution name:", error);
+      return null;
+    }
+  }
+  const institutionName = await getInstitutionName(email);
+  if (!institutionName) {
+    return res.status(404).send("Institution not found");
+  }
+
+  const usernames = [];
+  const studentQuerySnapshot = await db.collection("student").
+      where("institution", "==", institutionName).get();
+
+  studentQuerySnapshot.forEach((doc) => {
+    usernames.push(doc.id);
+  });
+  const otherStudentQuerySnapshot = await db.collection("student")
+      .where("otherInstitutionName", "==", institutionName)
+      .get();
+
+  otherStudentQuerySnapshot.forEach((doc) => {
+    usernames.push(doc.id);
+  });
+
+  let totalScholarshipIds = 0;
+  let countNew = 0;
+  let countHold = 0;
+  let countApprove = 0;
+  let countReject = 0;
+
+  for (const username of usernames) {
+    const scholarshipDocs = await db
+        .collection("scholarshipApplications").doc(username)
+        .collection("scholarshipIds").get();
+
+    scholarshipDocs.forEach((doc) => {
+      totalScholarshipIds++;
+      const status = doc.data().status;
+      if (status === "new") {
+        countNew++;
+      } else if (status === "hold") {
+        countHold++;
+      } else if (status === "approve") {
+        countApprove++;
+      } else if (status === "reject") {
+        countReject++;
+      }
+    });
+  }
+
+  return {
+    "Total scholarship applications": totalScholarshipIds,
+    "New scholarship applications": countNew,
+    "Hold scholarship applications": countHold,
+    "Approve scholarship applications": countApprove,
+    "Reject scholarship applications": countReject,
+  };
+}
+
+/**
+ * Retrieves the admin dashboard data.
+ *
+ * @param {Object} res - The response object.
+ * @return {Object} - Admin dashboard data.
+ */
+async function adminDashboard() {
+  // Get total number of applications applied
+  const totalApplicationsSnapshot =
+  await firestore.collection("registrationApplications").get();
+  const totalApplications = totalApplicationsSnapshot.size;
+
+  // Get total number of approved statuse
+  const approvedSnapshot = await firestore.
+      collection("registrationApplications").
+      where("status", "==", "approve").get();
+  const totalApprovedStatuses = approvedSnapshot.size;
+
+  // Get total number of hold statuses
+  const holdSnapshot = await firestore.
+      collection("registrationApplications").
+      where("status", "==", "hold").get();
+  const totalHoldStatuses = holdSnapshot.size;
+
+  // Get total number of new statuses
+  const newSnapshot = await firestore.collection("registrationApplications").
+      where("status", "==", "new").get();
+  const totalNewStatuses = newSnapshot.size;
+
+  // Get total number of reject statuses
+  const rejectSnapshot = await firestore.
+      collection("registrationApplications")
+      .where("status", "==", "reject").get();
+  const totalRejectStatuses = rejectSnapshot.size;
+
+  // Get total counts for scholarship statuses
+  let totalScholarshipIds = 0;
+  let approveScholarshipStatus = 0;
+  let holdScholarshipStatus = 0;
+  let rejectScholarshipStatus = 0;
+  let newScholarshipStatus = 0;
+
+  const scholarshipIdsSnapshot =
+  await db.collectionGroup("scholarshipIds").get();
+  totalScholarshipIds = scholarshipIdsSnapshot.size;
+
+  const subCollectionQuerySnapshot = await db.
+      collection("scholarshipApplications").listDocuments();
+  for (const docRef of subCollectionQuerySnapshot) {
+    const holdSnapshot = await docRef.
+        collection("scholarshipIds").where("status", "==", "hold").get();
+    holdScholarshipStatus += holdSnapshot.size;
+
+    const approvedSnapshot = await docRef.collection("scholarshipIds")
+        .where("status", "==", "approve").get();
+    approveScholarshipStatus += approvedSnapshot.size;
+
+    const newSnapshot = await docRef.collection("scholarshipIds")
+        .where("status", "==", "new").get();
+    newScholarshipStatus += newSnapshot.size;
+
+    const rejectSnapshot = await docRef.collection("scholarshipIds")
+        .where("status", "==", "reject").get();
+    rejectScholarshipStatus += rejectSnapshot.size;
+  }
+  // Get total counts for scholarship statuses
+  let totalLoanIds = 0;
+  let approveLoanStatus = 0;
+  let holdLoanStatus = 0;
+  let rejectLoanStatus = 0;
+  let newLoanStatus = 0;
+
+  const scholarshipIdsSnapshots =
+  await db.collectionGroup("loanIds").get();
+  totalLoanIds = scholarshipIdsSnapshots.size;
+
+  const subCollectionQuerySnapshots = await db.
+      collection("loanApplications").listDocuments();
+  for (const docRef of subCollectionQuerySnapshots) {
+    const holdSnapshot = await docRef.
+        collection("loanIds").where("status", "==", "hold").get();
+    holdLoanStatus += holdSnapshot.size;
+
+    const approvedSnapshot = await docRef.collection("loanIds")
+        .where("status", "==", "approve").get();
+    approveLoanStatus += approvedSnapshot.size;
+
+    const newSnapshot = await docRef.collection("loanIds")
+        .where("status", "==", "new").get();
+    newLoanStatus += newSnapshot.size;
+
+    const rejectSnapshot = await docRef.collection("loanIds")
+        .where("status", "==", "reject").get();
+    rejectLoanStatus += rejectSnapshot.size;
+  }
+  return {
+    "Total Applications": totalApplications,
+    "Total Approved Status": totalApprovedStatuses,
+    "Total Hold Status": totalHoldStatuses,
+    "Total New Status": totalNewStatuses,
+    "Total Rejected Status": totalRejectStatuses,
+    "Total Scholarship Applications": totalScholarshipIds,
+    "Approved Scholarship Status": approveScholarshipStatus,
+    "Hold Scholarship Status": holdScholarshipStatus,
+    "Rejected Scholarship Status": rejectScholarshipStatus,
+    "New Scholarship Status": newScholarshipStatus,
+    "Total Loan Applications": totalLoanIds,
+    "Approved Loan Status": approveLoanStatus,
+    "Hold Loan Status": holdLoanStatus,
+    "Rejected Loan Status": rejectLoanStatus,
+    "New Loan Status": newLoanStatus,
+  };
+}
+/**
+ * Retrieves the admin dashboard data.
+ *
+ * @param {Object} res - The response object.
+ * @return {Object} - Admin dashboard data.
+ */
+async function financialInstitutionDashboard(res) {
+  // Get total number of applications applied
+  const totalApplicationsSnapshot =
+  await firestore.collection("registrationApplications").get();
+  const totalApplications = totalApplicationsSnapshot.size;
+
+  // Get total number of approved statuse
+  const approvedSnapshot = await firestore.
+      collection("registrationApplications").
+      where("status", "==", "approve").get();
+  const totalApprovedStatuses = approvedSnapshot.size;
+
+  // Get total number of hold statuses
+  const holdSnapshot = await firestore.
+      collection("registrationApplications").
+      where("status", "==", "hold").get();
+  const totalHoldStatuses = holdSnapshot.size;
+
+  // Get total number of new statuses
+  const newSnapshot = await firestore.collection("registrationApplications").
+      where("status", "==", "new").get();
+  const totalNewStatuses = newSnapshot.size;
+
+  // Get total number of reject statuses
+  const rejectSnapshot = await firestore.
+      collection("registrationApplications")
+      .where("status", "==", "reject").get();
+  const totalRejectStatuses = rejectSnapshot.size;
+
+  // Get total counts for scholarship statuses
+  let totalScholarshipIds = 0;
+  let approveScholarshipStatus = 0;
+  let holdScholarshipStatus = 0;
+  let rejectScholarshipStatus = 0;
+  let newScholarshipStatus = 0;
+
+  const scholarshipIdsSnapshot =
+  await db.collectionGroup("scholarshipIds").get();
+  totalScholarshipIds = scholarshipIdsSnapshot.size;
+
+  const subCollectionQuerySnapshot = await db.
+      collection("scholarshipApplications").listDocuments();
+  for (const docRef of subCollectionQuerySnapshot) {
+    const holdSnapshot = await docRef.
+        collection("scholarshipIds").where("status", "==", "hold").get();
+    holdScholarshipStatus += holdSnapshot.size;
+
+    const approvedSnapshot = await docRef.collection("scholarshipIds")
+        .where("status", "==", "approve").get();
+    approveScholarshipStatus += approvedSnapshot.size;
+
+    const newSnapshot = await docRef.collection("scholarshipIds")
+        .where("status", "==", "new").get();
+    newScholarshipStatus += newSnapshot.size;
+
+    const rejectSnapshot = await docRef.collection("scholarshipIds")
+        .where("status", "==", "reject").get();
+    rejectScholarshipStatus += rejectSnapshot.size;
+  }
+  // Get total counts for scholarship statuses
+  let totalLoanIds = 0;
+  let approveLoanStatus = 0;
+  let holdLoanStatus = 0;
+  let rejectLoanStatus = 0;
+  let newLoanStatus = 0;
+
+  const scholarshipIdsSnapshots =
+  await db.collectionGroup("loanIds").get();
+  totalLoanIds = scholarshipIdsSnapshots.size;
+
+  const subCollectionQuerySnapshots = await db.
+      collection("loanApplications").listDocuments();
+  for (const docRef of subCollectionQuerySnapshots) {
+    const holdSnapshot = await docRef.
+        collection("loanIds").where("status", "==", "hold").get();
+    holdLoanStatus += holdSnapshot.size;
+
+    const approvedSnapshot = await docRef.collection("loanIds")
+        .where("status", "==", "approve").get();
+    approveLoanStatus += approvedSnapshot.size;
+
+    const newSnapshot = await docRef.collection("loanIds")
+        .where("status", "==", "new").get();
+    newLoanStatus += newSnapshot.size;
+
+    const rejectSnapshot = await docRef.collection("loanIds")
+        .where("status", "==", "reject").get();
+    rejectLoanStatus += rejectSnapshot.size;
+  }
+  return {
+    "Total Applications": totalApplications,
+    "Total Approved Status": totalApprovedStatuses,
+    "Total Hold Status": totalHoldStatuses,
+    "Total New Status": totalNewStatuses,
+    "Total Rejected Status": totalRejectStatuses,
+    "Total Scholarship Applications": totalScholarshipIds,
+    "Approved Scholarship Status": approveScholarshipStatus,
+    "Hold Scholarship Status": holdScholarshipStatus,
+    "Rejected Scholarship Status": rejectScholarshipStatus,
+    "New Scholarship Status": newScholarshipStatus,
+    "Total Loan Applications": totalLoanIds,
+    "Approved Loan Status": approveLoanStatus,
+    "Hold Loan Status": holdLoanStatus,
+    "Rejected Loan Status": rejectLoanStatus,
+    "New Loan Status": newLoanStatus,
+  };
+}
+
+/**
+ * Retrieves the donor dashboard data.
+ *
+ * @param {Object} res - The response object.
+ * @return {Object} - Donor dashboard data.
+ */
+async function donorDashboard(res) {
+  const statusCounts = {
+    "Total Scholarship Applications": 0,
+    "New Scholarship Application": 0,
+    "Hold Scholarship Application": 0,
+    "Approved Scholarship Application": 0,
+    "Rejected Scholarship Application": 0,
+  };
+
+  const subCollectionQuerySnapshot = await db.
+      collection("scholarshipApplications").listDocuments();
+
+  for (const docRef of subCollectionQuerySnapshot) {
+    const scholarshipIdsSnapshot = await docRef.
+        collection("scholarshipIds").get();
+    scholarshipIdsSnapshot.forEach((doc) => {
+      const data = doc.data();
+      // Check if the status field is defined and not null
+      if (data.status !== undefined && data.status !== null) {
+        switch (data.status.toLowerCase()) {
+          case "new":
+            statusCounts["New Scholarship Application"]++;
+            break;
+          case "hold":
+            statusCounts["Hold Scholarship Application"]++;
+            break;
+          case "approve":
+            statusCounts["Approved Scholarship Application"]++;
+            break;
+          case "reject":
+            statusCounts["Rejected Scholarship Application"]++;
+            break;
+          default:
+            break;
+        }
+        statusCounts["Total Scholarship Applications"]++;
+      }
+    });
+  }
+  return statusCounts;
+}
+
+/**
+ * Handles the dashboard request based on user type.
+ *
+ * @param {string} idToken - The ID token from the request.
+ * @param {Object} res - The response object.
+ * @return {void}
+ */
+async function handleDashboardRequest(idToken, res) {
+  try {
+    const decodedToken = await verifyToken(idToken);
+    if (!decodedToken) {
+      return res.status(401).send("Invalid ID token");
+    }
+
+    const email = decodedToken.email;
+    const userType = await getUserType(email);
+    if (!userType) {
+      return res.status(404).send("User not found");
+    }
+
+    let dashboardData;
+    switch (userType) {
+      case "student":
+        dashboardData = await studentDashboard(email);
+        break;
+      case "institution":
+        dashboardData = await institutionDashboard(email);
+        break;
+      case "admin":
+        dashboardData = await adminDashboard(email);
+        break;
+      case "donor":
+        dashboardData = await donorDashboard(email);
+        break;
+      case "financial Institution":
+        dashboardData = await financialInstitutionDashboard(email);
+        break;
+      default:
+        return res.status(400).send("Unknown user type");
+    }
+    res.status(200).json(dashboardData);
+  } catch (error) {
+    logger.error(error);
+    res.status(500).json({message: "Internal Server Error"});
+  }
+}
+
+/**
+ * Main endpoint for dashboard functionality.
+ */
+exports.getDashboard = onRequest({
+  region: "asia-south1",
+  cors: true,
+}, async (req, res) => {
+  const idToken = req.headers.authorization;
+  if (!idToken) {
+    return res.status(400).send("ID token is missing");
+  }
+
+  await handleDashboardRequest(idToken, res);
+});
+
+

@@ -1,0 +1,132 @@
+const {logger} = require("firebase-functions");
+const {onRequest} = require("firebase-functions/v2/https");
+const {initializeApp} = require("firebase-admin/app");
+const {getFirestore} = require("firebase-admin/firestore");
+const admin = require("firebase-admin");
+
+initializeApp();
+
+const db = admin.firestore();
+// const firestore = admin.firestore();
+/**
+ * Verifies an authentication token.
+ *
+ * @param {string} idToken - The ID token to verify.
+ * @return {Promise<object>} - Decoded token information.
+ * @throws {Error} - If verification fails.
+ */
+async function verifyToken(idToken) {
+  const decodedToken = await admin.auth().verifyIdToken(idToken);
+  return decodedToken;
+}
+/**
+ * Checks if a user is an admin, student, mentor, or donor.
+ *
+ * @param {string} email - The email address of the user.
+ * @return {Promise<string|null>} -
+ * @throws {Error} - If an error occurs during the process.
+ */
+async function getUserRole(email) {
+  const firestore = getFirestore();
+
+  try {
+    const adminDoc = await firestore.collection("admin").doc(email).get();
+    if (adminDoc.exists) {
+      return {role: "admin", firstName: adminDoc.data().
+          firstName, lastName: adminDoc.data().lastName};
+    }
+
+    const studentDoc = await firestore.collection("student").doc(email).get();
+    if (studentDoc.exists) {
+      return {role: "student", firstName: studentDoc.data().
+          firstName, lastName: studentDoc.data().lastName};
+    }
+
+    const mentorDoc = await firestore.collection("mentor").doc(email).get();
+    if (mentorDoc.exists) {
+      return {role: "mentor", firstName: mentorDoc.data().
+          firstName, lastName: mentorDoc.data().lastName};
+    }
+
+    const donorDoc = await firestore.collection("donor").doc(email).get();
+    if (donorDoc.exists) {
+      return {role: "donor", firstName: donorDoc.data().
+          firstName, lastName: donorDoc.data().lastName};
+    }
+
+    return null; // User not found in any role.
+  } catch (error) {
+    console.error("Error retrieving user role:", error);
+    return null;
+  }
+}
+
+
+// API endpoint to retrieve user information
+exports.sendMessageToDiscussion = onRequest({
+  region: "asia-south1", cors: true,
+}, async (req, res) => {
+  try {
+    const id = (req.query.id);
+    const {message} = req.body;
+    // Extract the ID token from the request headers
+    const idToken = req.headers.authorization;
+    if (!idToken) {
+      return res.status(400).send("ID token is missing");
+    }
+
+    // Verify the ID token
+    let decodedToken;
+    try {
+      decodedToken = await verifyToken(idToken);
+    } catch (error) {
+      if (error.code === "auth/id-token-expired") {
+        return res.status(401).send("ID token has expired");
+      }
+      return res.status(401).send("Invalid ID token");
+    }
+
+    if (!decodedToken) {
+      return res.status(401).send("Invalid ID token");
+    }
+
+    const userEmail = decodedToken.email;
+
+    const userRole = await getUserRole(userEmail);
+    if (!userRole) {
+      return res.status(403).
+          send("You are not authorized to view user information");
+    }
+
+    const {firstName, lastName} = userRole;
+
+    const topicRef = db.collection("DiscussionForum").doc(id.toString());
+    const topicDoc = await topicRef.get();
+
+    if (!topicDoc.exists) {
+      return res.status(404).json({message: "Topic not found"});
+    }
+
+    const {startTime, endTime} = topicDoc.data();
+    const currentTime = Math.floor(Date.now() / 1000);
+
+    if (currentTime < startTime) {
+      return res.status(400).
+          json({message: "Cannot send messages before start time"});
+    }
+
+    if (currentTime > endTime) {
+      return res.status(400).
+          json({message: "Cannot send messages after end time"});
+    }
+
+    const updatedMessages = [...topicDoc.data().messages,
+      {message, from: {email: userEmail, firstName, lastName},
+        createdAt: new Date()}];
+    await topicRef.update({messages: updatedMessages});
+    res.json({message: " message sent sucessfully"});
+  } catch (error) {
+    logger.error("Error updating document: ", error);
+    res.status(500).json({error: "Failed to add message to topic"});
+  }
+});

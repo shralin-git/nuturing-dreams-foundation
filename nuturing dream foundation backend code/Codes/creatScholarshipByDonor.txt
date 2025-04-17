@@ -1,0 +1,161 @@
+const {logger} = require("firebase-functions");
+const {onRequest} = require("firebase-functions/v2/https");
+const {initializeApp} = require("firebase-admin/app");
+const {getFirestore} = require("firebase-admin/firestore");
+const admin = require("firebase-admin");
+const nodemailer = require("nodemailer");
+
+initializeApp();
+
+// const db = admin.firestore();
+const firestore = admin.firestore();
+/**
+ * Verifies an authentication token.
+ *
+ * @param {string} idToken - The ID token to verify.
+ * @return {Promise<object>} - Decoded token information.
+ * @throws {Error} - If verification fails.
+ */
+async function verifyToken(idToken) {
+  const decodedToken = await admin.auth().verifyIdToken(idToken);
+  return decodedToken;
+}
+
+/**
+ * Checks if a user is an admin.
+ *
+ * @param {string} email - The email address of the user.
+ * @return {Promise<boolean>}
+ * @throws {Error} - If an error occurs during the process.
+ */
+async function isAdminUser(email) {
+  const firestore = getFirestore();
+  const donorDoc = await firestore.collection("donor").doc(email).get();
+  return donorDoc.exists;
+}
+
+// Nodemailer transporter setup
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: "nurturingdreamsfoundation@gmail.com",
+    pass: "kakt hpql pdvw byid",
+  },
+});
+
+// API endpoint to retrieve user information
+exports.creatScholarshipByDonor = onRequest({
+  region: "asia-south1", cors: true,
+}, async (req, res) => {
+  try {
+    // Extract the ID token from the request headers
+    const idToken = req.headers.authorization;
+    if (!idToken) {
+      return res.status(400).send("ID token is missing");
+    }
+
+    let decodedToken;
+    try {
+      decodedToken = await verifyToken(idToken);
+    } catch (error) {
+      if (error.code === "auth/id-token-expired") {
+        return res.status(401).send("ID token has expired");
+      }
+      return res.status(401).send("Invalid ID token");
+    }
+
+    if (!decodedToken) {
+      return res.status(401).send("Invalid ID token");
+    }
+
+    // Extract user information from the token
+    const donorEmail = decodedToken.email;
+    const isAdmin = await isAdminUser(donorEmail);
+    if (!isAdmin) {
+      return res.status(403).send("Only donors can apply this Application");
+    }
+    const createdBy=donorEmail;
+    const {scholarshipName, scholarshipDetails, attachments} = req.body || {};
+    // Check if all required fields are provided
+    if (!scholarshipName || !scholarshipDetails || !createdBy) {
+      return res.status(400).json({error: "Missing required fields"});
+    }
+
+    // Get current date
+    const currentDate = new Date();
+
+    const donorDoc = await firestore.collection("donor").doc(donorEmail).get();
+    if (!donorDoc.exists) {
+      return res.status(404).send("Donor details not found");
+    }
+
+
+    const donorData = donorDoc.data();
+    const firstName = donorData.firstName;
+    const lastName = donorData.lastName;
+
+    // Check if scholarship already exists
+    const scholarshipRef = firestore.
+        collection("scholarships").doc(scholarshipName);
+    const scholarshipDoc = await scholarshipRef.get();
+
+    if (scholarshipDoc.exists) {
+      // If scholarship already exists, return error
+      return res.status(400).json({error: "Scholarship with the"+
+      " same name already exists"});
+    } else {
+      let isAttachment = false; // Default value
+
+      if (attachments && attachments.length > 0) {
+        isAttachment = true;
+      }
+      // Create new scholarship
+      await scholarshipRef.set({
+        scholarshipDetails,
+        createdBy,
+        createdDate: currentDate,
+        status: "new", // Default status
+        processedBy: "", // Default processedBy
+        processedDate: "", // Default processedDate
+        firstName,
+        lastName,
+        attachments: attachments || [],
+        isAttachment: isAttachment,
+      });
+      const mailOptions = {
+        from: `"Nurturing Dreams Foundation" <
+        nurturingdreamsfoundation@gmail.com>`,
+        to: createdBy,
+        subject: "Scholarship product application confirmation",
+        html: `
+          <p>Dear ${firstName},</p>
+          <p>Your scholarship Product application
+          has been successfully submitted.</p>
+          <ul>
+            <li><strong>Scholarship Name:</strong> ${scholarshipName}</li>
+            <li><strong>Scholarship Details:</strong> ${scholarshipDetails}</li>
+          </ul>
+          <p>Thank you for your application.</p>
+          <p><strong>Please note that your application is currently under review
+          and has not been approved yet. Once approved by the admin,
+          you will receive another email notification.</strong></p>
+          <p>Sincerely,</p>
+          <p><strong>Nurturing Dreams Foundation</strong></p>
+        `,
+      };
+
+      transporter.sendMail(mailOptions, (error, info) => {
+        if (error) {
+          console.error("Error sending email:", error);
+        } else {
+          console.log("Email sent:", info.response);
+        }
+      });
+
+      res.status(201).json({message: "Scholarship created successfully"});
+    }
+  } catch (error) {
+    logger.error(error);
+    res.status(500).json({error: "Internal Server Error"});
+  }
+});

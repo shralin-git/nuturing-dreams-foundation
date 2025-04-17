@@ -1,0 +1,138 @@
+const {logger} = require("firebase-functions");
+const {onRequest} = require("firebase-functions/v2/https");
+const {Storage} = require("@google-cloud/storage");
+const {initializeApp} = require("firebase-admin/app");
+const admin = require("firebase-admin");
+const {getFirestore} = require("firebase-admin/firestore");
+initializeApp();
+
+const storage = new Storage();
+const bucket = storage.bucket("nurturingdreamsfoundatio-451b5-emt4r");
+
+/**
+ * Verifies an authentication token.
+ *
+ * @param {string} idToken - The ID token to verify.
+ * @return {Promise<object>} - Decoded token information.
+ * @throws {Error} - If verification fails.
+ */
+async function verifyToken(idToken) {
+  const decodedToken = await admin.auth().verifyIdToken(idToken);
+  return decodedToken;
+}
+
+/**
+ * Checks if a user is an admin or a student.
+ *
+ * @param {string} email - The email address of the user.
+ * @return {Promise<boolean>} - Returns.
+ * @throws {Error} - If an error occurs during the process.
+ */
+async function isAuthorizedUser(email) {
+  const firestore = getFirestore();
+
+  // Check if the user is an admin
+  const adminDoc = await firestore.collection("admin").doc(email).get();
+  if (adminDoc.exists) {
+    return true;
+  }
+
+  // Check if the user is a student
+  const studentDoc = await firestore.collection("student").doc(email).get();
+  if (studentDoc.exists) {
+    return true;
+  }
+
+  // Check if the user is a donor
+  const financialInstitutionDoc = await firestore.
+      collection("financial Institution").doc(email).get();
+  if (financialInstitutionDoc.exists) {
+    return true;
+  }
+  // Check if the user is a donor
+  const donorDoc = await firestore.
+      collection("donor").doc(email).get();
+  if (donorDoc.exists) {
+    return true;
+  }
+
+  // If the user is neither admin nor student nor donor
+  return false;
+}
+
+/**
+ * Generates shareable download URLs for all files under a specific product.
+ * @param {string} product - The product to retrieve files for.
+ * @param {number} expirationSeconds - The expiration time for the URLs.
+ * @return {Promise<string[]>} - Array of download URLs for the files.
+ * @throws {Error} - If an error occurs during the process.
+ */
+async function getAllDownloadURLs(product, expirationSeconds) {
+  try {
+    const files = await bucket.getFiles({prefix: product + "/"});
+    const urls = await Promise.all(files[0].map(async (file) => {
+      const [url] = await file.getSignedUrl({
+        action: "read",
+        expires: Date.now() + expirationSeconds * 1000,
+      });
+      return url;
+    }));
+    return urls;
+  } catch (error) {
+    logger.error("Error generating download URLs:", error);
+    throw error;
+  }
+}
+
+exports.getProductFiles = onRequest({
+  region: "asia-south1",
+  cors: true,
+}, async (req, res) => {
+  try {
+    // Extract the ID token from the request headers
+    const idToken = req.headers.authorization;
+    if (!idToken) {
+      return res.status(400).send("ID token is missing");
+    }
+
+    let decodedToken;
+    try {
+      decodedToken = await verifyToken(idToken);
+    } catch (error) {
+      if (error.code === "auth/id-token-expired") {
+        return res.status(401).send("ID token has expired");
+      }
+      return res.status(401).send("Invalid ID token");
+    }
+    if (!decodedToken) {
+      return res.status(401).send("Invalid ID token");
+    }
+
+    // Extract user information from the token
+    const adminEmail = decodedToken.email;
+    const isAdmin = await isAuthorizedUser(adminEmail);
+    if (!isAdmin) {
+      return res.status(403).
+          send("You are not authorized to access this resource");
+    }
+
+    const {product} = req.query;
+    if (!product) {
+      return res.status(400).
+          json({error: "product is required"});
+    }
+
+    try {
+      const downloadURLs = await getAllDownloadURLs(product, 600);
+      // Extract the URL from the array
+      const url = downloadURLs[0];
+      res.status(200).json({downloadURL: url});
+    } catch (error) {
+      logger.error("Error retrieving files:", error);
+      res.status(500).json({error: "Internal Server Error"});
+    }
+  } catch (error) {
+    logger.error("Error processing request:", error);
+    res.status(500).json({error: "Internal Server Error"});
+  }
+});

@@ -1,0 +1,159 @@
+const {logger} = require("firebase-functions");
+const {onRequest} = require("firebase-functions/v2/https");
+const {initializeApp} = require("firebase-admin/app");
+const {getFirestore} = require("firebase-admin/firestore");
+const admin = require("firebase-admin");
+const nodemailer = require("nodemailer");
+
+initializeApp();
+
+const db = admin.firestore();
+const firestore = admin.firestore();
+/**
+ * Verifies an authentication token.
+ *
+ * @param {string} idToken - The ID token to verify.
+ * @return {Promise<object>} - Decoded token information.
+ * @throws {Error} - If verification fails.
+ */
+async function verifyToken(idToken) {
+  const decodedToken = await admin.auth().verifyIdToken(idToken);
+  return decodedToken;
+}
+
+/**
+ * Checks if a user is an admin.
+ *
+ * @param {string} email - The email address of the user.
+ * @return {Promise<boolean>}
+ * @throws {Error} - If an error occurs during the process.
+ */
+async function isAdminUser(email) {
+  const firestore = getFirestore();
+  const adminDoc = await firestore.collection("admin").doc(email).get();
+  return adminDoc.exists;
+}
+
+const sendMail = async (mailOptions) => {
+  try {
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: "nurturingdreamsfoundation@gmail.com",
+        pass: "kakt hpql pdvw byid",
+      },
+    });
+    await transporter.sendMail(mailOptions);
+  } catch (error) {
+    logger.error("Error sending email:", error);
+    throw error;
+  }
+};
+
+// API endpoint to retrieve user information
+exports.updateScholarshipProductStatusByAdmin = onRequest({
+  region: "asia-south1", cors: true,
+}, async (req, res) => {
+  try {
+    // Extract the ID token from the request headers
+    const idToken = req.headers.authorization;
+    if (!idToken) {
+      return res.status(400).send("ID token is missing");
+    }
+
+    let decodedToken;
+    try {
+      decodedToken = await verifyToken(idToken);
+    } catch (error) {
+      if (error.code === "auth/id-token-expired") {
+        return res.status(401).send("ID token has expired");
+      }
+      return res.status(401).send("Invalid ID token");
+    }
+
+    if (!decodedToken) {
+      return res.status(401).send("Invalid ID token");
+    }
+
+    // Extract user information from the token
+    const adminEmail = decodedToken.email;
+    const isAdmin = await isAdminUser(adminEmail);
+    if (!isAdmin) {
+      return res.status(403).send("You are not authorized" +
+        " to view user information");
+    }
+    const {scholarshipName, status, remarks=""} = req.body;
+
+    // Check if all required fields are provided
+    if (!scholarshipName || !status ) {
+      return res.status(400).json({error: "Missing required fields"});
+    }
+
+    // Get current date
+    const processedDate = new Date();
+    const processedBy=adminEmail;
+    // Update scholarship status and processing details
+    const scholarshipRef = firestore.
+        collection("scholarships").doc(scholarshipName);
+    const scholarshipDoc = await scholarshipRef.get();
+
+    if (!scholarshipDoc.exists) {
+      return res.status(404).json({error: "Scholarship not found"});
+    }
+
+    await scholarshipRef.update({
+      status,
+      processedBy,
+      processedDate,
+      remarks,
+    });
+
+    const createdBy = scholarshipDoc.data().createdBy;
+    const scholarshipDetails = scholarshipDoc.data().scholarshipDetails;
+
+    // Fetch first name from registrationapplication table
+    const registrationAppRef = db.
+        collection("donor").doc(createdBy);
+    const registrationAppDoc = await registrationAppRef.get();
+    const firstName = registrationAppDoc.exists ? registrationAppDoc.
+        data().firstName : "User";
+
+    const mailOptions = {
+      from: `"Nurturing Dreams Foundation" <
+      nurturingdreamsfoundation@gmail.com>`,
+      to: createdBy,
+      subject: status ===
+      "approve" ? "Scholarship product application approved" :
+        (status === "reject" ? "Scholarship product application rejected" :
+          "Scholarship application on hold"),
+      html: (() => {
+        let message = `Dear ${firstName},<br><br>`;
+        message += status === "approve" ? "Congratulations! Your"+
+        " scholarship product application has been approved." :
+          (status === "reject" ? "We regret to inform you that your"+
+          " scholarship Product application has been rejected." :
+            "Your scholarship Product application is on hold.");
+        if (scholarshipDetails && scholarshipName) {
+          message += `<br><br><strong>Scholarship Details:</strong>
+           ${scholarshipDetails}<br><strong>Scholarship Name:
+           </strong> ${scholarshipName}`;
+        }
+        if (remarks) {
+          message += `<br><br><strong>Remarks:</strong> ${remarks}`;
+        }
+        message += `<br><br>Best Regards,<br>
+        <strong>Nurturing Dreams Foundation</strong>`;
+        return message;
+      })(),
+    };
+
+    await sendMail(mailOptions);
+
+    res.status(200).json({message: "Scholarship status"+
+    " updated successfully"});
+  } catch (error) {
+    logger.error(error);
+    res.status(500).json({error: "Internal Server Error"});
+  }
+});
+

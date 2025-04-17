@@ -1,0 +1,94 @@
+const {logger} = require("firebase-functions");
+const {onRequest} = require("firebase-functions/v2/https");
+const {initializeApp} = require("firebase-admin/app");
+const admin = require("firebase-admin");
+const {getFirestore} = require("firebase-admin/firestore");
+
+initializeApp();
+
+const firestore = admin.firestore();
+// const firestore = admin.firestore();
+/**
+ * Verifies an authentication token.
+ *
+ * @param {string} idToken - The ID token to verify.
+ * @return {Promise<object>} - Decoded token information.
+ * @throws {Error} - If verification fails.
+ */
+async function verifyToken(idToken) {
+  const decodedToken = await admin.auth().verifyIdToken(idToken);
+  return decodedToken;
+}
+
+/**
+ * Checks if a user is an admin.
+ *
+ * @param {string} email - The email address of the user.
+ * @return {Promise<boolean>}
+ * @throws {Error} - If an error occurs during the process.
+ */
+async function isAdminUser(email) {
+  const firestore = getFirestore();
+  const adminDoc = await firestore.collection("admin").doc(email).get();
+  const InstitutionDoc = await firestore.
+      collection("institution").doc(email).get();
+  const financialInstitutionDoc = await firestore.
+      collection("financial Institution").doc(email).get();
+  return adminDoc.exists || InstitutionDoc.exists ||
+      financialInstitutionDoc.exists;
+}
+
+
+// API endpoint to retrieve data from a Firestore collection based on table name
+exports.getDataFromUsertype = onRequest({
+  region: "asia-south1",
+  cors: true,
+}, async (req, res) => {
+  try {
+    // Extract the ID token from the request headers
+    const idToken = req.headers.authorization;
+    if (!idToken) {
+      return res.status(400).send("ID token is missing");
+    }
+
+    // Verify the ID token
+    let decodedToken;
+    try {
+      decodedToken = await verifyToken(idToken);
+    } catch (error) {
+      if (error.code === "auth/id-token-expired") {
+        return res.status(402).send("ID token has expired");
+      }
+      return res.status(401).send("Invalid ID token");
+    }
+
+    if (!decodedToken) {
+      return res.status(401).send("Invalid ID token");
+    }
+
+    // Extract user information from the token
+    const adminEmail = decodedToken.email;
+    const isAdmin = await isAdminUser(adminEmail);
+    if (!isAdmin) {
+      return res.status(403).send("You are not authorized" +
+        " to view user information");
+    }
+    const {userType} = req.query;
+
+    if (!userType) {
+      return res.status(404).json({message: "Table name is required"});
+    }
+
+    // Retrieve all documents from the specified table
+    const tableData = [];
+    const tableSnapshot = await firestore.collection(userType).get();
+    tableSnapshot.forEach((doc) => {
+      tableData.push({id: doc.id, ...doc.data()});
+    });
+
+    res.status(200).json({userType, data: tableData});
+  } catch (error) {
+    logger.error(error);
+    res.status(500).json({message: "Internal Server Error"});
+  }
+});

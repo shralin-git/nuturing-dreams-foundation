@@ -1,0 +1,87 @@
+const {logger} = require("firebase-functions");
+const {onRequest} = require("firebase-functions/v2/https");
+const {initializeApp} = require("firebase-admin/app");
+const admin = require("firebase-admin");
+
+initializeApp();
+
+const firestore = admin.firestore();
+
+/**
+ * Verifies an authentication token.
+ *
+ * @param {string} idToken - The ID token to verify.
+ * @return {Promise<object>} - Decoded token information.
+ * @throws {Error} - If verification fails.
+ */
+async function verifyToken(idToken) {
+  const decodedToken = await admin.auth().verifyIdToken(idToken);
+  return decodedToken;
+}
+
+/**
+ * Checks if a user is an admin.
+ *
+ * @param {string} email - The email address of the user.
+ * @return {Promise<boolean>}
+ * @throws {Error} - If an error occurs during the process.
+ */
+async function isAdminUser(email) {
+  const adminDoc = await firestore.collection("admin").doc(email).get();
+  return adminDoc.exists;
+}
+
+// API endpoint to retrieve donor information
+exports.getDonorInformation = onRequest({
+  region: "asia-south1",
+  cors: true,
+}, async (req, res) => {
+  try {
+    const donorType = req.query.donorType;
+
+    // Extract the ID token from the request headers
+    const idToken = req.headers.authorization;
+    if (!idToken) {
+      return res.status(400).send("ID token is missing");
+    }
+
+    let decodedToken;
+    try {
+      decodedToken = await verifyToken(idToken);
+    } catch (error) {
+      if (error.code === "auth/id-token-expired") {
+        return res.status(401).send("ID token has expired");
+      }
+      return res.status(401).send("Invalid ID token");
+    }
+
+    if (!decodedToken) {
+      return res.status(401).send("Invalid ID token");
+    }
+
+    // Extract user information from the token
+    const adminEmail = decodedToken.email;
+    const isAdmin = await isAdminUser(adminEmail);
+    if (!isAdmin) {
+      return res.status(403).
+          send("You are not authorized to view donor information");
+    }
+
+    const donorDetails = [];
+
+    const donorSnapshot =
+      await firestore.collection("donor")
+          .where("donorType", "==", donorType)
+          .get();
+
+    donorSnapshot.forEach((doc) => {
+      const data = doc.data();
+      donorDetails.push({id: doc.id, data: data});
+    });
+
+    res.status(200).json({donorDetails});
+  } catch (error) {
+    logger.error(error);
+    res.status(500).json({message: "Internal Server Error"});
+  }
+});

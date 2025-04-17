@@ -1,0 +1,111 @@
+const {logger} = require("firebase-functions");
+const {onRequest} = require("firebase-functions/v2/https");
+const {initializeApp} = require("firebase-admin/app");
+const admin = require("firebase-admin");
+const dotenv = require("dotenv");
+const crypto = require("crypto");
+
+initializeApp();
+const firestore = admin.firestore();
+dotenv.config();
+
+
+exports.paymentVerify = onRequest({
+  region: "asia-south1", cors: true,
+}, async (req, res) => {
+  try {
+    const {email} = req.body;
+    const currentDate = new Date();
+    // Parse req.body and rename keys without underscores
+    const requestBody = {};
+    Object.keys(req.body).forEach((key) => {
+      requestBody[key.replace(/_/g, "")] = req.body[key];
+    });
+
+    const {razorpayorderid, razorpaypaymentid,
+      razorpaysignature} = requestBody;
+    console.log(razorpayorderid, razorpaypaymentid);
+
+    // Proceed with verification
+    const sign = razorpayorderid + "|" + razorpaypaymentid;
+    const keySecret = "8op8cYPBoSmqNlXoJphvpvjE";
+    const expectedSign = crypto
+        .createHmac("sha256", keySecret)
+        .update(sign.toString())
+        .digest("hex");
+
+    if (razorpaysignature !== expectedSign) {
+      console.log({message: "Invalid signature sent!"});
+    }
+
+    // Search for the payment entry
+    const paymentRef = firestore.collection("payments").doc(email);
+    const paymentDoc = await paymentRef.get();
+
+    if (!paymentDoc.exists) {
+      return res.status(404).
+          json({message: "No payment found for the user."});
+    }
+
+    // Check if the payment entry contains the provided razorpay_order_id
+    const paymentData = paymentDoc.data();
+    const matchingPayment = paymentData.payments.
+        find((payment) => payment.orderID === razorpayorderid);
+
+    if (!matchingPayment) {
+      return res.status(404).json({message: "No matching order found."});
+    }
+
+    // Update paymentSuccess field to true
+    try {
+      await paymentRef.update({
+        "payments": paymentData.payments.map((payment) => {
+          if (payment.orderID === razorpayorderid) {
+            return {...payment, paymentSuccess: true,
+              paymentID: razorpaypaymentid, paymentDate: currentDate};
+          }
+          return payment;
+        }),
+      });
+    } catch (error) {
+      console.log(error);
+      return res.status(500).
+          json({message: "Failed to update payment status."});
+    }
+
+    // Define a function to update payment success status
+    const updatePaymentSuccessStatus = async (collectionName) => {
+      const collectionRef = firestore.collection(collectionName);
+      const querySnapshot = await collectionRef.
+          where("email", "==", email).get();
+
+      if (!querySnapshot.empty) {
+        const doc = querySnapshot.docs[0];
+        const docRef = collectionRef.doc(doc.id);
+        await docRef.update({paymentSuccess: true});
+        return true;
+      }
+      return false;
+    };
+
+    // Define the order of table searches
+    const tableSearchOrder = ["student", "mentor", "donor",
+      "institution", "financial Institution", "registrationApplications"];
+
+    // Search for the email in the tables according to the order defined
+    for (const tableName of tableSearchOrder) {
+      const paymentUpdated = await updatePaymentSuccessStatus(tableName);
+      if (paymentUpdated) {
+        // If payment success status is updated in this table, break the loop
+        break;
+      }
+    }
+
+    return res.status(200).
+        json({message: "Payment verified successfully"});
+  } catch (error) {
+    res.status(500).json({message: "Internal Server Error!"});
+    logger.log(error);
+  }
+});
+

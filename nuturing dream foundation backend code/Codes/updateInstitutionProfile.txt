@@ -1,0 +1,134 @@
+const {logger} = require("firebase-functions");
+const {onRequest} = require("firebase-functions/v2/https");
+const {initializeApp} = require("firebase-admin/app");
+// const {getFirestore} = require("firebase-admin/firestore");
+const admin = require("firebase-admin");
+const nodemailer = require("nodemailer");
+
+initializeApp();
+
+const db = admin.firestore();
+// const firestore = admin.firestore();
+/**
+ * Verifies an authentication token.
+ *
+ * @param {string} idToken - The ID token to verify.
+ * @return {Promise<object>} - Decoded token information.
+ * @throws {Error} - If verification fails.
+ */
+async function verifyToken(idToken) {
+  const decodedToken = await admin.auth().verifyIdToken(idToken);
+  return decodedToken;
+}
+/**
+ * Validates an email address.
+ * @param {string} email The email address to validate.
+ * @return {boolean} `true` if the email is valid, otherwise `false`.
+ */
+function isValidEmail(email) {
+  const re = /\S+@\S+\.\S+/;
+  return re.test(email);
+}
+
+/**
+ * Validates a phone number.
+ * @param {string} phoneNumber The phone number to validate.
+ * @return {boolean} `true` if the phone number is valid, otherwise `false`.
+ */
+function isValidPhoneNumber(phoneNumber) {
+  const re = /^\d{10}$/;
+  return re.test(phoneNumber);
+}
+// Nodemailer transporter setup
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: "nurturingdreamsfoundation@gmail.com",
+    pass: "kakt hpql pdvw byid",
+  },
+});
+
+// API endpoint to retrieve user information
+exports.updateInstitutionProfile = onRequest({
+  region: "asia-south1", cors: true,
+}, async (req, res) => {
+  try {
+    // Extract the ID token from the request headers
+    const idToken = req.headers.authorization;
+    if (!idToken) {
+      return res.status(400).send("ID token is missing");
+    }
+
+    // Verify the ID token
+    let decodedToken;
+    try {
+      decodedToken = await verifyToken(idToken);
+    } catch (error) {
+      if (error.code === "auth/id-token-expired") {
+        return res.status(401).send("ID token has expired");
+      }
+      return res.status(401).send("Invalid ID token");
+    }
+
+    if (!decodedToken) {
+      return res.status(401).send("Invalid ID token");
+    }
+
+    const email = decodedToken.email;
+
+    const {institutionName, institutionType, phoneNumber,
+      address} = req.body;
+      // Validate email format
+    if (!isValidEmail(email)) {
+      return res.status(400).json({error: "Invalid email format"});
+    }
+
+    // Validate phone number format
+    if (!isValidPhoneNumber(phoneNumber)) {
+      return res.status(400).json({error: "Invalid phone number format"});
+    }
+
+    const studentRef = db.collection("institution").doc(email);
+
+    await studentRef.update({
+      institutionName,
+      institutionType,
+      phoneNumber,
+      address,
+      lastUpdate: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    const donorDoc = await studentRef.get();
+    const donorData = donorDoc.data();
+    const FirstName = donorData ? donorData.institutionName : "User";
+
+    const mailOptions = {
+      from: `"Nurturing Dreams Foundation" <
+      nurturingdreamsfoundation@gmail.com>`,
+      to: email,
+      subject: "Profile update confirmation",
+      html: `
+        <p>Dear ${FirstName},</p>
+        <p><strong>Your profile has been successfully updated.</strong></p>
+        <p>If you did not make these changes or believe your account
+        has been compromised, please contact us immediately.</p>
+        <p>Thank you for keeping your information up to date.</p>
+        <p>Sincerely,</p>
+        <p><strong>Nurturing Dreams Foundation</strong></p>
+      `,
+    };
+
+    transporter.sendMail(mailOptions, (error, info) => {
+      if (error) {
+        console.error("Error sending email:", error);
+      } else {
+        console.log("Email sent:", info.response);
+      }
+    });
+
+    res.status(200).json("Institution information updated successfully.");
+  } catch (error) {
+    logger.error("Error updating student information:", error);
+    res.status(500).json({error: "Internal Server Error"});
+  }
+});

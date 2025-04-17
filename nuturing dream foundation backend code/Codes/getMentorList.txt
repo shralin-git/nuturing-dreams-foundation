@@ -1,0 +1,41 @@
+const {logger} = require("firebase-functions");
+const {onRequest} = require("firebase-functions/v2/https");
+const {initializeApp} = require("firebase-admin/app");
+// const {getFirestore} = require("firebase-admin/firestore");
+const admin = require("firebase-admin");
+
+initializeApp();
+
+const db = admin.firestore();
+
+// API endpoint to retrieve user information
+exports.getMentorList = onRequest({
+  region: "asia-south1", cors: true,
+}, async (req, res) => {
+  try {
+    // Get mentors collection reference
+    const mentorsRef = db.collection("mentor");
+
+    // Retrieve all mentors
+    const mentorsSnapshot = await mentorsRef.get();
+
+    // Format mentors data
+    const mentorsList = [];
+    mentorsSnapshot.forEach((doc) => {
+      const mentorData = doc.data();
+      // Include only first name, last name, and email in the response
+      const formattedMentor = {
+        firstName: mentorData.firstName,
+        lastName: mentorData.lastName,
+        email: mentorData.email,
+      };
+      mentorsList.push(formattedMentor);
+    });
+
+    // Return formatted mentors list
+    res.status(200).json(mentorsList);
+  } catch (error) {
+    logger.error("Error:", error);
+    res.status(500).send("Internal Server Error");
+  }
+});

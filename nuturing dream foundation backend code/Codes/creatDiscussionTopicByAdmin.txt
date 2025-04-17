@@ -1,0 +1,114 @@
+const {logger} = require("firebase-functions");
+const {onRequest} = require("firebase-functions/v2/https");
+const {initializeApp} = require("firebase-admin/app");
+const {getFirestore} = require("firebase-admin/firestore");
+const admin = require("firebase-admin");
+
+initializeApp();
+
+const db = admin.firestore();
+// const firestore = admin.firestore();
+/**
+ * Verifies an authentication token.
+ *
+ * @param {string} idToken - The ID token to verify.
+ * @return {Promise<object>} - Decoded token information.
+ * @throws {Error} - If verification fails.
+ */
+async function verifyToken(idToken) {
+  const decodedToken = await admin.auth().verifyIdToken(idToken);
+  return decodedToken;
+}
+
+/**
+ * Checks if a user is an admin.
+ *
+ * @param {string} email - The email address of the user.
+ * @return {Promise<boolean>}
+ * @throws {Error} - If an error occurs during the process.
+ */
+async function isAdminUser(email) {
+  const firestore = getFirestore();
+  const adminDoc = await firestore.collection("admin").doc(email).get();
+  return adminDoc.exists;
+}
+
+/**
+ * Generates a random 6-digit ID.
+ * @return {number} The generated ID.
+ */
+function generateID() {
+  return Math.floor(100000 + Math.random() * 900000);
+}
+
+/**
+ * Converts a JavaScript Date object to epoch format.
+ * @param {Date} date - The input date.
+ * @return {number} The epoch timestamp in seconds.
+ */
+function toEpoch(date) {
+  return date.getTime() / 1000; // Convert milliseconds to seconds
+}
+
+
+// API endpoint to retrieve user information
+exports.creatDiscussionTopicByAdmin = onRequest({
+  region: "asia-south1", cors: true,
+}, async (req, res) => {
+  try {
+    // Extract the ID token from the request headers
+    const idToken = req.headers.authorization;
+    if (!idToken) {
+      return res.status(400).send("ID token is missing");
+    }
+
+    // Verify the ID token
+    let decodedToken;
+    try {
+      decodedToken = await verifyToken(idToken);
+    } catch (error) {
+      if (error.code === "auth/id-token-expired") {
+        return res.status(401).send("ID token has expired");
+      }
+      return res.status(401).send("Invalid ID token");
+    }
+
+    if (!decodedToken) {
+      return res.status(401).send("Invalid ID token");
+    }
+
+    // Extract user information from the token
+    const adminEmail = decodedToken.email;
+    const isAdmin = await isAdminUser(adminEmail);
+    if (!isAdmin) {
+      return res.status(403).send("You are not authorized" +
+        " to view user information");
+    }
+    const {title, startEpoch, endEpoch} = req.body;
+    const id = generateID();
+
+    // Convert epoch times to Date objects
+    const startTime = new Date(startEpoch * 1000);
+    const endTime = new Date(endEpoch * 1000);
+
+    const newTopic = {
+      title,
+      startTime: toEpoch(startTime),
+      endTime: toEpoch(endTime),
+      createdAt: toEpoch(new Date()),
+      createdBy: adminEmail,
+      messages: [],
+    };
+
+    try {
+      await db.collection("DiscussionForum").doc(id.toString()).set(newTopic);
+      res.json({message: "Topic created successfully"});
+    } catch (error) {
+      console.error("Error adding document: ", error);
+      res.status(500).json({error: "Failed to create topic"});
+    }
+  } catch (error) {
+    logger.error(error);
+    res.status(500).json({message: "Internal Server Error"});
+  }
+});

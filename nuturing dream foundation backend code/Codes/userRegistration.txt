@@ -1,0 +1,293 @@
+// The Cloud Functions for Firebase SDK to create Cloud Functions and triggers.
+const {logger} = require("firebase-functions");
+const {onRequest} = require("firebase-functions/v2/https");
+const express = require("express");
+const app = express();
+const nodemailer = require("nodemailer");
+const admin = require("firebase-admin");
+const credentials = require("./key.json");
+// const cors = require("cors");
+// Initialize Firebase Admin SDK
+admin.initializeApp({
+  credential: admin.credential.cert(credentials),
+});
+const db = admin.firestore();
+
+app.use(express.json());
+app.use(express.urlencoded({extended: true}));
+
+// Nodemailer transporter setup
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: "nurturingdreamsfoundation@gmail.com",
+    pass: "kakt hpql pdvw byid",
+  },
+});
+/**
+ * Validates an email address.
+ * @param {string} email The email address to validate.
+ * @return {boolean} `true` if the email is valid, otherwise `false`.
+ */
+function validateEmail(email) {
+  const re = /\S+@\S+\.\S+/;
+  return re.test(email);
+}
+
+/**
+ * Validates a phone number.
+ * @param {string} phoneNumber The phone number to validate.
+ * @return {boolean} `true` if the phone number is valid, otherwise `false`.
+ */
+function validatePhoneNumber(phoneNumber) {
+  const re = /^\d{10}$/;
+  return re.test(phoneNumber);
+}
+
+// HTTP endpoint for adding a new user registration
+exports.userRegistration = onRequest({
+  region: "asia-south1", cors: true,
+}, async (req, res) => {
+  try {
+    const {userType, ...userData} = req.body;
+    const {email, phoneNumber} = userData;
+
+    // Validate email format and phone number length
+    if (!validateEmail(email)) {
+      return res.status(400).json({
+        message: "Invalid email format. Your request failed. Please try again",
+      });
+    }
+
+    if (!validatePhoneNumber(phoneNumber)) {
+      return res.status(400).json({
+        message:
+          "Invalid phone number format. Phone number must "+
+          "be 10 digits. Your request failed. Please try again",
+      });
+    }
+
+    const currentDate = new Date();
+    try {
+      const snapshot = await db.collection("registrationApplications")
+          .where("email", "==", email)
+          .get();
+
+      if (!snapshot.empty) {
+        // User already exists, check if paymentSuccess is true
+        const userData = snapshot.docs[0].data();
+        if (userData.paymentSuccess === "true" &&
+        (userData.status === "approve" || userData.status === "new" ||
+        userData.status === "hold")) {
+          return res.status(400).json({
+            message: "User already exists and payment has been completed",
+          });
+        }
+        // If paymentSuccess is not true, continue with registration
+      }
+    } catch (error) {
+      console.error("Error checking for existing user:", error);
+      return res.status(500).json({message: "Error checking"+
+      "for existing user"});
+    }
+
+    // Set default details
+    userData.status = "new";
+    userData.processedBy = "";
+    userData.processedDate = "";
+    userData.submitDate = currentDate;
+    userData.paymentSuccess = "false";
+    // userData.userType = userType;
+
+    // Determine user type and validate required fields accordingly
+    let requiredFields = [];
+    let userInfo = {};
+
+    switch (userType) {
+      case "student":
+        requiredFields = [
+          "firstName",
+          "lastName",
+          "phoneNumber",
+          "email",
+          "gender",
+          "dateOfBirth",
+          "address",
+          "educationLevel",
+          "courseSpecialization",
+          "institution",
+          "yearOfPassing",
+          "notes",
+          "university",
+        ];
+        if (!userData.otherInstitutionName) {
+          userData.otherInstitutionName = "";
+        } else {
+          requiredFields.push("otherInstitutionName");
+        }
+        break;
+      case "mentor":
+        requiredFields = [
+          "firstName",
+          "lastName",
+          "phoneNumber",
+          "email",
+          "gender",
+          "dateOfBirth",
+          "address",
+          "specialization",
+        ];
+        break;
+      case "institution":
+      case "financial Institution":
+        requiredFields = [
+          "institutionName",
+          "institutionType",
+          "phoneNumber",
+          "email",
+          "address",
+        ];
+        break;
+      case "donor":
+        requiredFields = [
+          "firstName",
+          "lastName",
+          "phoneNumber",
+          "email",
+          "gender",
+          "dateOfBirth",
+          "address",
+          "donorType",
+          "notes",
+        ];
+        break;
+      default:
+        return res.status(400).json({message: "Invalid user type"});
+    }
+
+    const missingFields = requiredFields.filter(
+        (field) => !Object.prototype.hasOwnProperty.call(userData, field),
+    );
+
+    if (missingFields.length > 0) {
+      return res.status(400).json({
+        message: `Missing required fields for ${userType}: ${missingFields.join(
+            ", ",
+        )}. Your request failed. Please try again`,
+      });
+    }
+    switch (userType) {
+      case "student":
+        userInfo = {
+          userType: "student",
+          firstName: userData.firstName,
+          lastName: userData.lastName,
+          phoneNumber: userData.phoneNumber,
+          email: userData.email,
+          gender: userData.gender,
+          dateOfBirth: userData.dateOfBirth,
+          address: userData.address,
+          educationLevel: userData.educationLevel,
+          courseSpecialization: userData.courseSpecialization,
+          institution: userData.institution,
+          yearOfPassing: userData.yearOfPassing,
+          notes: userData.notes,
+          university: userData.university,
+          otherInstitutionName: userData.otherInstitutionName || "",
+          ...userData,
+          attachments: userData.attachments || [],
+        };
+        break;
+      case "mentor":
+        userInfo = {
+          userType: "mentor",
+          firstName: userData.firstName,
+          lastName: userData.lastName,
+          phoneNumber: userData.phoneNumber,
+          email: userData.email,
+          gender: userData.gender,
+          dateOfBirth: userData.dateOfBirth,
+          address: userData.address,
+          ...userData,
+          specialization: userData.specialization,
+        };
+        break;
+      case "institution":
+      case "financial Institution":
+        userInfo = {
+          userType,
+          institutionName: userData.institutionName,
+          institutionType: userData.institutionType,
+          phoneNumber: userData.phoneNumber,
+          email: userData.email,
+          ...userData,
+          address: userData.address,
+        };
+        break;
+      case "donor":
+        userInfo = {
+          userType: "donor",
+          firstName: userData.firstName,
+          lastName: userData.lastName,
+          phoneNumber: userData.phoneNumber,
+          email: userData.email,
+          gender: userData.gender,
+          dateOfBirth: userData.dateOfBirth,
+          address: userData.address,
+          notes: userData.notes,
+          ...userData,
+          donorType: userData.donorType,
+          attachments: userData.attachments || [],
+        };
+        break;
+    }
+
+    // Store registration details in Firestore
+    await db
+        .collection("registrationApplications")
+        .doc(email)
+        .set(userInfo);
+
+    // Log success
+    logger.info(`${userType} registration application submitted successfully`);
+
+    // Send success response
+    res.status(201).json({
+      message: `${userType} registration application submitted successfully`,
+    });
+    const recipientName = userData.firstName ||
+    userData.institutionName || "User";
+    // Send email to the user
+    const mailOptions = {
+      from: `"Nurturing Dreams Foundation" <
+      nurturingdreamsfoundation@gmail.com>`,
+      to: email,
+      subject: "Registration application received",
+      html: `<p>Dear <strong>${recipientName}</strong>,</p>
+        <p>Thank you for registering with us.</p>
+        <p>Your registration application has been recieved.
+        Our team will review your application,
+        once approved you will receive the login
+        credentials to your email.</p>
+        <p><strong>Kindly note:</strong> Your application process
+        will be completed only upon successful payment. If
+        the payment is not successful, your application process
+        will not proceed.</p>
+        <p>Best regards,<br><strong>Nurturing Dreams Foundation</strong></p>`,
+    };
+
+    transporter.sendMail(mailOptions, (error, info) => {
+      if (error) {
+        console.error("Error sending email:", error);
+      } else {
+        console.log("Email sent:", info.response);
+      }
+    });
+  } catch (error) {
+    // Log error
+    logger.error(`Error submitting registration application: ${error}`);
+
+    // Handle errors
+    res.status(500).json({message: "Internal Server Error"});
+  }
+});

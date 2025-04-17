@@ -1,0 +1,141 @@
+const {logger} = require("firebase-functions");
+const {onRequest} = require("firebase-functions/v2/https");
+
+const admin = require("firebase-admin");
+const {getFirestore} = require("firebase-admin/firestore");
+const {initializeApp} = require("firebase-admin/app");
+initializeApp();
+
+// Initialize Firestore
+const db = getFirestore();
+
+/**
+ * Verifies an authentication token.
+ *
+ * @param {string} idToken - The ID token to verify.
+ * @return {Promise<object>} - Decoded token information.
+ * @throws {Error} - If verification fails.
+ */
+async function verifyToken(idToken) {
+  const decodedToken = await admin.auth().verifyIdToken(idToken);
+  return decodedToken;
+}
+
+exports.getAllChats = onRequest({
+  region: "asia-south1",
+  cors: true,
+}, async (req, res) => {
+  try {
+    // Extract the ID token from the request headers
+    const idToken = req.headers.authorization;
+    if (!idToken) {
+      return res.status(400).send("ID token is missing");
+    }
+
+    let decodedToken;
+    try {
+      decodedToken = await verifyToken(idToken);
+    } catch (error) {
+      if (error.code === "auth/id-token-expired") {
+        return res.status(401).send("ID token has expired");
+      }
+      return res.status(401).send("Invalid ID token");
+    }
+
+    if (!decodedToken) {
+      return res.status(401).send("Invalid ID token");
+    }
+
+    // Extract user information from the token
+    const userEmail = decodedToken.email;
+
+    // Construct conversation ID for the requested user
+    const chatRef = db.collection("chats").doc(userEmail);
+
+    // Retrieve all conversation references for the user
+    const conversationsSnapshot = await chatRef.listCollections();
+    const conversations = [];
+    if (conversationsSnapshot.length === 0) {
+      return res.status(404).
+          send([]);
+    }
+
+    for (const collectionRef of conversationsSnapshot) {
+      const conversationId = collectionRef.id;
+
+      // Construct conversation reference
+      const conversationRef = chatRef.
+          collection(conversationId).doc("messages");
+
+      // Retrieve all messages from the conversation
+      const conversationDoc = await conversationRef.get();
+      if (!conversationDoc.exists) {
+        continue;
+      }
+
+      const messages = conversationDoc.data().messages || [];
+      const unreadMessagesCount = messages.reduce((count, message) => {
+        if (!message.isRead && message.from !== userEmail) {
+          return count + 1;
+        }
+        return count;
+      }, 0);
+
+      // Fetch user information
+      let userInfo;
+      const studentDoc = await db.
+          collection("student").doc(conversationId).get();
+      if (studentDoc.exists) {
+        const studentData = studentDoc.data();
+        userInfo = {
+          firstName: studentData.firstName,
+          lastName: studentData.lastName,
+          email: studentData.email,
+          count: unreadMessagesCount,
+        };
+
+        if (studentData.institution === "Others") {
+          userInfo.institution = studentData.otherInstitutionName;
+        } else if (studentData.institution) {
+          userInfo.institution = studentData.institution;
+        }
+      } else {
+        const mentorDoc = await db.
+            collection("mentor").doc(conversationId).get();
+        if (mentorDoc.exists) {
+          const mentorData = mentorDoc.data();
+          userInfo = {
+            firstName: mentorData.firstName,
+            lastName: mentorData.lastName,
+            email: mentorData.email,
+            count: unreadMessagesCount,
+          };
+          if (mentorData.institution) {
+            userInfo.institution = mentorData.institution;
+          }
+          if (mentorData.specialization) {
+            userInfo.specialization = mentorData.specialization;
+          }
+        }
+      }
+
+      if (userInfo) {
+        messages.sort((a, b) => b.createdAt - a.createdAt);
+        // Add the conversation info to the list
+        conversations.push({
+          ...userInfo,
+          // Add the newest message timestamp
+          newestMessageTimestamp:
+              messages.length > 0 ? messages[0].createdAt : null,
+        });
+      }
+    }
+    conversations.sort((a, b) => b.
+        newestMessageTimestamp - a.newestMessageTimestamp);
+
+    res.status(200).json(conversations);
+  } catch (error) {
+    logger.error("Error:", error);
+    res.status(500).send("Internal Server Error");
+  }
+});

@@ -1,0 +1,251 @@
+
+
+# Firebase Deployment Setup Documentation
+
+## Overview
+This document provides a step-by-step guide for setting up and deploying Firebase Cloud Functions. Firebase Cloud Functions allow you to run backend code in response to events triggered by Firebase features and HTTPS requests.
+
+## Prerequisites
+Ensure that the following prerequisites are met before proceeding:
+- [ ] Firebase project created (using Firebase Console).
+- [ ] Node.js and npm installed.
+- [ ] Firebase CLI installed (`npm install -g firebase-tools`).
+
+## Step-by-Step Guide
+
+### 1. Initialize Firebase Project
+1. Open the terminal or command prompt.
+2. Navigate to the root directory of your project.
+3. Run the following command to initialize Firebase in your project:
+   ```
+   firebase init
+   ```
+4. Follow the prompts to select Firebase features to set up (Firestore, Hosting, Functions, etc.).
+5. Select the Firebase project you created in the Firebase Console.
+6. Choose a project directory and configure Firebase features as needed.
+
+### 2. Write Cloud Functions
+1. Write your Cloud Functions in separate JavaScript files within the `functions` directory.
+2. Ensure that each function is exported using `exports.functionName`.
+3. Use the Firebase SDK for Cloud Functions to interact with Firebase services if needed.
+
+### 3. Install Dependencies
+1. Navigate to the `functions` directory:
+   ```
+   cd functions
+   ```
+2. Run `npm install` to install dependencies for your Cloud Functions.
+
+### 4. Test Cloud Functions Locally (Optional)
+1. Run `firebase serve --only functions` to start the local Firebase emulator suite.
+2. Send requests to your Cloud Functions endpoints to test functionality locally.
+
+### 5. Deploy Cloud Functions
+1. Navigate back to the root directory of your project.
+2. Run the following command to deploy Cloud Functions to Firebase:
+   ```
+   firebase deploy 
+   ```
+3. Firebase will deploy your Cloud Functions and provide you with the URLs for your deployed functions.
+
+### 6. Monitor Deployed Functions
+1. Use the Firebase Console to monitor the usage and logs of your deployed Cloud Functions.
+2. Monitor for errors or performance issues and make necessary adjustments to your functions as needed.
+
+## Conclusion
+Congratulations! You have successfully set up and deployed Cloud Functions on Firebase. You can now leverage the power of serverless computing to handle backend logic for your Firebase project.
+
+Demo code :
+// The Cloud Functions for Firebase SDK to create Cloud Functions and triggers.
+const {onRequest} = require("firebase-functions/v2/https");
+const {logger} = require("firebase-functions");
+// const cors = require("cors");
+// The Firebase Admin SDK to access Firestore.
+const {initializeApp} = require("firebase-admin/app");
+const nodemailer = require("nodemailer");
+
+initializeApp();
+const express = require("express");
+const bodyParser = require("body-parser");
+const admin = require("firebase-admin");
+const axios = require("axios");
+const db = admin.firestore();
+const app = express();
+
+// Middleware to parse JSON requests
+app.use(bodyParser.json());
+
+/**
+ * Verifies the provided ID token.
+ *
+ * @param {string} idToken - The ID token to verify.
+ * @return {Promise<object>} - A promise that resolves with the decoded token.
+ */
+async function verifyToken(idToken) {
+  const decodedToken = await admin.auth().verifyIdToken(idToken);
+  return decodedToken;
+}
+
+/**
+ * Updates the 'isFirstTime' field for a given username in multiple collections.
+ * @param {string} username - The username to search for.
+ * @return {Promise<boolean>} -
+ */
+async function updateIsFirstTime(username) {
+  const collections = ["student", "mentor", "donor",
+    "institution", "financialInstitution"];
+
+  for (const collection of collections) {
+    const docRef = db.collection(collection).doc(username);
+    const doc = await docRef.get();
+
+    if (doc.exists) {
+      await docRef.update({isFirstTime: false});
+      return true; // Username found and isFirstTime updated
+    }
+  }
+
+  return false; // Username not found in any table
+}
+// Nodemailer transporter setup
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: "vinithnaik38@gmail.com",
+    pass: "subr qdvy omiq sicr",
+  },
+});
+
+// Endpoint to change password securely
+exports.resetPassword = onRequest({
+  region: "asia-south1", cors: true,
+}, async (req, res) => {
+  try {
+    const {oldPassword, newPassword, confirmNewPassword} = req.body;
+
+    // Extract the ID token from the request header
+    const idToken = req.headers.authorization;
+    if (!idToken) {
+      return res
+          .status(404)
+          .json({message: "No token provided. Authorization"+
+        " required . Please try again."});
+    }
+
+    // Verify the ID token
+    const decodedToken = await verifyToken(idToken);
+    if (!decodedToken) {
+      return res.status(401).json({message: "Invalid"+
+      " token Please try again."});
+    }
+
+    // Check token expiration time
+    const tokenExpirationTime = decodedToken.exp * 1000;
+    const currentTime = Date.now();
+    if (tokenExpirationTime < currentTime) {
+      return res
+          .status(402)
+          .json({message: "Token has expired  Please try again."});
+    }
+    const username = decodedToken.email;
+
+
+    if (decodedToken.email !== username) {
+      return res
+          .status(403)
+          .json({message: "You are not authorized to"+
+        " perform actions on this page  Your request has been failed."});
+    }
+    const usernameExists = await updateIsFirstTime(username);
+
+    if (usernameExists) {
+      console.log("isFirstTime updated for username:", username);
+    }
+
+    // Check if all required fields are provided
+    if ( !oldPassword ||
+       !newPassword || !confirmNewPassword) {
+      return res.status(405).json({message: "All fields "+
+      "are required Please try again"});
+    }
+
+    // Check if new passwords match
+    if (newPassword !== confirmNewPassword) {
+      return res.status(406).json({message: "Passwords do not"+
+      " match.Please try again"});
+    }
+
+    // Verify old password using Firebase REST API
+    const signInResponse = await axios.post("https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword", {
+      email: username,
+      password: oldPassword,
+      returnSecureToken: true,
+    }, {
+      params: {
+        key: "AIzaSyAxPTIiH0ubjokB7zXlL0cRKEzH5_vIUdA",
+      },
+    });
+
+    // If sign-in was successful, update the password
+    if (signInResponse.data && signInResponse.data.idToken) {
+      const updatePasswordResponse =
+      await axios.post("https://identitytoolkit.googleapis.com/v1/accounts:update", {
+        idToken: signInResponse.data.idToken,
+        password: newPassword,
+        returnSecureToken: false,
+      }, {
+        params: {
+          key: "AIzaSyAxPTIiH0ubjokB7zXlL0cRKEzH5_vIUdA",
+        },
+      });
+      const mailOptions = {
+        from: "vinithnaik38@gmail.com",
+        to: username,
+        subject: "Password Reset Confirmation",
+        html: `
+          <p>Dear User,</p>
+          <p>Your password has been successfully reset.</p>
+          <p>If you did not request this change or believe
+          your account has been compromised, please contact
+           us immediately.</p>
+          <p>Thank you for keeping your account secure.</p>
+          <p>Sincerely,</p>
+          <p>Nurturing Dream Foundation</p>
+        `,
+      };
+
+      transporter.sendMail(mailOptions, (error, info) => {
+        if (error) {
+          console.error("Error sending email:", error);
+        } else {
+          console.log("Email sent:", info.response);
+        }
+      });
+
+
+      if (updatePasswordResponse.data && updatePasswordResponse.data.email) {
+        res.status(200).json({message: "Password updated successfully"});
+      }
+    }
+  } catch (error) {
+    if (error.response && error.response.data &&
+       error.response.data.error && error.response.data.error.message) {
+      // Handling errors from Firebase REST API
+      logger.error("Error updating password:",
+          error.response.data.error.message);
+      res.status(501).json({message: error.response.data.error.message});
+    } else if (error.message.includes("ID token has expired")) {
+      // Handle expired token error
+      res.status(402).json({message: "Token has expired. Please try again."});
+    } else if (error.message.includes("Decoding Firebase ID token failed")) {
+      // Handle invalid token error
+      res.status(401).json({message: " Invalid token . Please try again."});
+    } else {
+      // Handle other errors
+      console.error("Error updating password:", error.message);
+      res.status(500).json({message: "Internal server error"});
+    }
+  }
+});
+
+ Note :The API should be in the above Code format only 
